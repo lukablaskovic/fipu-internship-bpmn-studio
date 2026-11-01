@@ -67,6 +67,7 @@ try {
   const visual = await clean.newPage();
   await visual.goto(origin);
   await expect(visual.locator('.bpmn-node')).toHaveCount(31);
+  await visual.screenshot({ path: fileURLToPath(new URL('desktop-overview.png', review)), fullPage: true });
   await visual.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
   await visual.screenshot({ path: fileURLToPath(new URL('desktop.png', review)), fullPage: true });
   await visual.setViewportSize({ width: 390, height: 844 });
@@ -74,6 +75,7 @@ try {
   assert(await visual.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await visual.screenshot({ path: fileURLToPath(new URL('mobile.png', review)), fullPage: true });
   await visual.getByRole('button', { name: 'Otvori elemente', exact: true }).click();
+  await visual.screenshot({ path: fileURLToPath(new URL('mobile-library.png', review)), fullPage: true });
   await visual.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).press('Enter');
   await expect(visual.locator('.editor')).not.toHaveClass(/show-palette/);
   await expect(visual.locator('.editor')).toHaveClass(/show-inspector/);

@@ -1,5 +1,8 @@
 <script setup>
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { mdiAccountOutline, mdiCogOutline, mdiEmail, mdiHandBackLeftOutline } from '@mdi/js';
+
+const taskIcons = { userTask: mdiAccountOutline, serviceTask: mdiCogOutline, sendTask: mdiEmail, manualTask: mdiHandBackLeftOutline };
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -145,12 +148,7 @@ defineExpose({ fit, focus, center, zoomIn: () => zoom(0.8), zoomOut: () => zoom(
       </g>
       <g v-else>
         <rect class="node-shape" x="0" y="0" :width="node.width" :height="node.height" rx="10" :fill="highlights[node.id] || '#fff'" />
-        <g transform="translate(9 8)" fill="none" stroke="#36536b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-          <g v-if="node.type === 'userTask'"><circle cx="7" cy="4" r="3" /><path d="M1 16v-3a6 6 0 0 1 12 0v3M4 12v4m6-4v4" /></g>
-          <g v-else-if="node.type === 'serviceTask'"><path d="m6 1 3 0 1 3 3-1 2 3-2 2 2 2-2 3-3-1-1 3H6l-1-3-3 1-2-3 2-2-2-2 2-3 3 1Z" /><circle cx="7.5" cy="8" r="2.5" /></g>
-          <g v-else-if="node.type === 'sendTask'"><rect x="0" y="2" width="16" height="11" rx="1" fill="#36536b" /><path d="m1 3 7 5 7-5" stroke="#fff" /></g>
-          <path v-else-if="node.type === 'manualTask'" d="M3 9V3a1.5 1.5 0 0 1 3 0v5-6a1.5 1.5 0 0 1 3 0v6-5a1.5 1.5 0 0 1 3 0v5-3a1.5 1.5 0 0 1 3 0v6c0 3-2 5-5 5H7L1 11a2 2 0 0 1 2-2Z" />
-        </g>
+        <path v-if="taskIcons[node.type]" :d="taskIcons[node.type]" transform="translate(8 7) scale(.75)" fill="#36536b" />
         <text class="node-label" :x="node.width / 2" :y="Math.max(31, node.height / 2 - (lines(node.name, node.width - 14).length - 1) * 6 + 7)" text-anchor="middle"><tspan v-for="(line, i) in lines(node.name, node.width - 14)" :key="i" :x="node.width / 2" :dy="i ? 12 : 0">{{ line }}</tspan></text>
       </g>
     </g>
