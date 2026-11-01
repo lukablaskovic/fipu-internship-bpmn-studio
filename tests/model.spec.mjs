@@ -25,6 +25,12 @@ try {
       check(signatures(model) === signatures(parseModel(exported)), `${name}: model semantic and DI round trip`);
       const errors = validateModel(model, catalog.connectors).filter(issue => issue.severity === 'error');
       check(errors.length === 0, `${name}: template validation: ${JSON.stringify(errors)}`);
+      if (name === 'B') {
+        check(validateModel(model, catalog.connectors).length === 0, 'Model B has no validation warnings');
+        check(!model.nodes.some(node => node.id === 'Activity_0dri58t'), 'Unused Model B placeholder removed');
+        const branchEnd = model.nodes.find(node => node.id === 'end_event_dogovor_poslodavac');
+        check(branchEnd?.type === 'endEvent' && model.flows.some(flow => flow.sourceRef === 'model_b_dogovor_poslodavac' && flow.targetRef === branchEnd.id), 'Employer branch has a normal End Event');
+      }
       const mutateXml = callback => {
         const draft = parseModel(exported);
         callback(draft.document);

@@ -21,7 +21,7 @@ With the development server running, use `npm test` for the XML toolkit, MCP ser
 
 Choose Model A or Model B, select an element to edit its properties, and use the palette to create supported BPMN elements. Drag nodes to move them, connect nodes with Sequence Flows, and use undo/redo to revise changes. The inspector exposes documentation, connector configuration, input/output mappings, user form fields and gateway conditions. Existing IDs remain stable because the dashboard and saved instances refer to them.
 
-Import and export use BPMN XML with BPMN Diagram Interchange coordinates. Legacy Camunda extensions are converted to the FIPU namespace on import. Unsupported executable elements are reported and block validated export; they are not silently discarded. The included Model B has a pre-existing disconnected placeholder task, reported as a warning.
+Import and export use BPMN XML with BPMN Diagram Interchange coordinates. Legacy Camunda extensions are converted to the FIPU namespace on import. Unsupported executable elements are reported and block validated export; they are not silently discarded. Model B's employer-agreement branch ends with its own End Event while the student workflow continues independently.
 
 Drafts are stored locally in the browser. They are not server backups. Export the `.bpmn` file to retain or share your work. Studio does not execute connectors, send email, or publish workflow changes.
 
