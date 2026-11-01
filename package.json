@@ -1,0 +1,26 @@
+{
+  "name": "fipu-bpmn-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "test:model": "node tests/model.spec.mjs",
+    "test:ui": "node tests/studio.spec.mjs",
+    "test": "npm run test:model && npm run test:ui"
+  },
+  "dependencies": {
+    "@fipu/bpmn": "file:packages/bpmn",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vite": "8.3.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

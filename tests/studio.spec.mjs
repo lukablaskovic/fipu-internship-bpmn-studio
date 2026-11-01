@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { mkdir, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { chromium, expect } from '@playwright/test';
+
+const root = new URL('../', import.meta.url);
+const review = new URL('.impeccable/review/', root);
+await mkdir(review, { recursive: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+const origin = process.env.STUDIO_URL || 'http://127.0.0.1:5174';
+const xmlA = await readFile(new URL('public/models/strucna_praksa_A.bpmn', root), 'utf8');
+const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, acceptDownloads: true });
+const errors = [];
+const page = await context.newPage();
+page.on('pageerror', error => errors.push(error.message));
+try {
+  await page.goto(origin);
+  await expect(page.locator('.bpmn-node')).toHaveCount(31);
+  await page.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
+  await expect(page.getByLabel('Putanja', { exact: true })).toHaveValue('/api/student_preferencije');
+  await page.getByLabel('Naziv', { exact: true }).fill('Provjera uređivanja');
+  await page.getByRole('button', { name: 'Primijeni izmjene', exact: true }).click();
+  await expect(page.getByLabel('Naziv', { exact: true })).toHaveValue('Provjera uređivanja');
+  await page.getByRole('button', { name: 'Poništi izmjenu', exact: true }).click();
+  await expect(page.getByLabel('Naziv', { exact: true })).toHaveValue('Spremanje preferencija u baserow');
+  await page.getByRole('button', { name: 'Ponovi izmjenu', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Provjera uređivanja Service Task', exact: true }).click();
+  await expect(page.getByLabel('Naziv', { exact: true })).toHaveValue('Provjera uređivanja');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Izvezi BPMN', exact: true }).click();
+  const download = await downloadPromise;
+  const exported = await readFile(await download.path(), 'utf8');
+  assert(exported.includes('Provjera uređivanja') && exported.includes('urn:fipu:bpmn:1') && !exported.includes('camunda.org'));
+  await download.saveAs(fileURLToPath(new URL('exported-model.bpmn', review)));
+
+  await page.getByLabel('Putanja', { exact: true }).fill('/unknown-operation');
+  await page.getByRole('button', { name: 'Primijeni izmjene', exact: true }).click();
+  await page.getByRole('button', { name: 'Izvezi BPMN', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Izvoz je zaustavljen');
+  await page.getByRole('button', { name: 'Poništi izmjenu', exact: true }).click();
+
+  await page.locator('input[type=file]').setInputFiles({ name: 'uvoz.bpmn', mimeType: 'application/xml', buffer: Buffer.from(xmlA) });
+  await expect(page.getByRole('heading', { name: 'uvoz', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'uvoz', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Model B Izravna prijava', exact: true }).click();
+  await expect(page.locator('.bpmn-node')).toHaveCount(21);
+  await page.getByRole('button', { name: 'Uvezena skica uvoz.bpmn', exact: true }).click();
+  await expect(page.locator('.bpmn-node')).toHaveCount(31);
+
+  await page.getByRole('button', { name: 'Servisni zadatak Service Task', exact: true }).click();
+  await expect(page.locator('.bpmn-node')).toHaveCount(32);
+  await page.getByRole('button', { name: 'Poništi izmjenu', exact: true }).click();
+  await expect(page.locator('.bpmn-node')).toHaveCount(31);
+  const viewBox = await page.locator('.fipu-bpmn-canvas').getAttribute('viewBox');
+  await page.getByRole('button', { name: 'Uvećaj', exact: true }).click();
+  assert.notEqual(await page.locator('.fipu-bpmn-canvas').getAttribute('viewBox'), viewBox);
+
+  const unsupported = xmlA.replace('</bpmn:process>', '<bpmn:subProcess id="unsupported" /></bpmn:process>');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('input[type=file]').setInputFiles({ name: 'unsupported.bpmn', mimeType: 'application/xml', buffer: Buffer.from(unsupported) });
+  await page.getByRole('button', { name: 'Izvezi BPMN', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Izvoz je zaustavljen');
+
+  const clean = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  const visual = await clean.newPage();
+  await visual.goto(origin);
+  await expect(visual.locator('.bpmn-node')).toHaveCount(31);
+  await visual.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
+  await visual.screenshot({ path: fileURLToPath(new URL('desktop.png', review)), fullPage: true });
+  await visual.setViewportSize({ width: 390, height: 844 });
+  await visual.getByRole('button', { name: 'Zatvori svojstva', exact: true }).click();
+  assert(await visual.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await visual.screenshot({ path: fileURLToPath(new URL('mobile.png', review)), fullPage: true });
+  await visual.getByRole('button', { name: 'Otvori elemente', exact: true }).click();
+  await visual.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).press('Enter');
+  await expect(visual.locator('.editor')).not.toHaveClass(/show-palette/);
+  await expect(visual.locator('.editor')).toHaveClass(/show-inspector/);
+  assert(await visual.evaluate(() => Boolean(document.activeElement.closest('.inspector-panel'))));
+  await visual.screenshot({ path: fileURLToPath(new URL('mobile-inspector.png', review)), fullPage: true });
+  await visual.getByRole('button', { name: 'Zatvori svojstva', exact: true }).click();
+  assert(await visual.evaluate(() => { const box = document.activeElement.getBoundingClientRect(); return box.width > 0 && box.x >= 0 && box.right <= innerWidth; }));
+  await clean.close();
+
+  const blocked = await browser.newContext();
+  await blocked.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException('Storage disabled', 'SecurityError'); }; });
+  const blockedPage = await blocked.newPage();
+  await blockedPage.goto(origin);
+  await blockedPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
+  await blockedPage.getByLabel('Naziv', { exact: true }).fill('Nespremljeno');
+  await blockedPage.getByRole('button', { name: 'Primijeni izmjene', exact: true }).click();
+  blockedPage.once('dialog', dialog => dialog.dismiss());
+  await blockedPage.getByRole('button', { name: 'Model B Izravna prijava', exact: true }).click();
+  await expect(blockedPage.getByRole('heading', { name: 'Stručna praksa · Model A', exact: true })).toBeVisible();
+  await expect(blockedPage.getByLabel('Naziv', { exact: true })).toHaveValue('Nespremljeno');
+  await blocked.close();
+  assert.deepEqual(errors, []);
+  console.log('Studio editing, undo/redo, draft recovery, import/export, validation, storage failure and responsive checks passed.');
+} finally { await browser.close(); }
