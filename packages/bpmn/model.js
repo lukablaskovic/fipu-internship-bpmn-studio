@@ -272,8 +272,12 @@ export function moveElement(model, id, x, y) {
   return readModel(next.document);
 }
 
-function nextId(model, prefix) {
+function nextId(model, prefix, requested) {
   const ids = new Set(all(model.document, '*', '*').map(element => attr(element, 'id')));
+  if (requested !== undefined) {
+    if (typeof requested !== 'string' || !/^[A-Za-z_][\w.-]*$/.test(requested) || ids.has(requested) || ids.has(`${requested}_di`)) throw new Error('Choose a unique XML ID using letters, digits, underscores, periods, or hyphens.');
+    return requested;
+  }
   let index = 1;
   while (ids.has(`${prefix}_${index}`) || ids.has(`${prefix}_${index}_di`)) index++;
   return `${prefix}_${index}`;
@@ -288,8 +292,7 @@ function plane(model) {
 export function addNode(model, type, options = {}) {
   if (!NODE_TYPES.includes(type)) throw new Error('This BPMN element is not supported by the Praksa engine.');
   const next = readModel(model.document.cloneNode(true));
-  const id = options.id || nextId(next, type);
-  if (!/^[A-Za-z_][\w.-]*$/.test(id) || all(next.document, '*', '*').some(element => [id, `${id}_di`].includes(attr(element, 'id')))) throw new Error('Choose a unique XML ID using letters, digits, underscores, periods, or hyphens.');
+  const id = nextId(next, type, options.id);
   const { x = 100, y = 100, name = TYPE_LABELS[type], laneId = '' } = options;
   if (![x, y].every(Number.isFinite)) throw new Error('Position must use finite coordinates.');
   const element = create(next.document, 'bpmn', type, { id, name });
@@ -308,7 +311,7 @@ export function addFlow(model, sourceId, targetId, options = {}) {
   if (!source || !target || sourceId === targetId || source.type === 'endEvent' || target.type === 'startEvent') throw new Error('Choose distinct flow nodes; End Events cannot have outgoing flows and Start Events cannot have incoming flows.');
   if (model.flows.some(flow => flow.sourceRef === sourceId && flow.targetRef === targetId)) throw new Error('These nodes already have a Sequence Flow.');
   const next = readModel(model.document.cloneNode(true));
-  const id = nextId(next, 'Flow');
+  const id = nextId(next, 'Flow', options.id);
   const flow = create(next.document, 'bpmn', 'sequenceFlow', { id, sourceRef: sourceId, targetRef: targetId, name: options.name || '' });
   elementById(next, next.processId).append(flow);
   elementById(next, sourceId).append(create(next.document, 'bpmn', 'outgoing', {}, id));

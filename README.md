@@ -15,7 +15,7 @@ Open <http://localhost:5174>. `npm run build` creates a static site in `dist/`; 
 
 ## Check
 
-With the development server running, use `npm test` for the XML toolkit and editor regression checks. Install test Chromium once with `npx playwright install chromium`, or set `CHROME_PATH` to an existing Chrome executable. `npm run test:model` runs the XML tests without a server. UI tests use an isolated browser profile and write ignored screenshots/XML under `.impeccable/review/`.
+With the development server running, use `npm test` for the XML toolkit, MCP server and editor regression checks. Install test Chromium once with `npx playwright install chromium`, or set `CHROME_PATH` to an existing Chrome executable. `npm run test:model` runs the XML tests without a server. `npm run test:mcp` tests the MCP protocol and file edits in temporary directories without a browser or running stack. UI tests use an isolated browser profile and write ignored screenshots/XML under `.impeccable/review/`.
 
 ## Edit a model
 
@@ -24,6 +24,12 @@ Choose Model A or Model B, select an element to edit its properties, and use the
 Import and export use BPMN XML with BPMN Diagram Interchange coordinates. Legacy Camunda extensions are converted to the FIPU namespace on import. Unsupported executable elements are reported and block validated export; they are not silently discarded. The included Model B has a pre-existing disconnected placeholder task, reported as a warning.
 
 Drafts are stored locally in the browser. They are not server backups. Export the `.bpmn` file to retain or share your work. Studio does not execute connectors, send email, or publish workflow changes.
+
+## Edit models with Codex or Claude Code
+
+The local MCP server exposes model inspection, connector guidance, validation, and batch editing of tasks, forms, Sequence Flows and layout. It edits actual `.bpmn`/`.xml` files in a directory you choose. It uses the same XML toolkit and validation as Studio, and can run without the browser app or Docker.
+
+After `npm ci`, start it through your MCP client using `node /absolute/path/to/fipu-bpmn-studio/mcp/server.mjs --models-dir /absolute/path/to/models`. Edits preview by default; saving requires an explicit flag and the revision returned when the agent read the model. See [MCP setup and workflow](docs/mcp.md) for Codex and Claude Code commands, examples, and the Praksa source/snapshot workflow.
 
 ## Apply reviewed changes to Praksa
 
@@ -37,7 +43,8 @@ New User Tasks or renamed form fields also require dashboard mappings/forms and 
 ## Structure
 
 - `src/`: standalone editor and inspector.
-- `packages/bpmn/`: dependency-free XML toolkit and reusable Vue SVG renderer.
+- `packages/bpmn/`: XML toolkit using standard DOM APIs, and reusable Vue SVG renderer.
+- `mcp/`: local stdio MCP server for editing model files with agents.
 - `public/models/`: reviewed A/B model snapshots from the engine.
 - `public/connectors.json`: connector metadata from `internship-application-services/bpmn/connectors.json`, with no credentials or server URLs.
 - `docs/bpmn-profile.md`: supported execution profile and compatibility rules.

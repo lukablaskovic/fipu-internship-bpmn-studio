@@ -3,4 +3,6 @@ dist/
 playwright-report/
 test-results/
 .impeccable/review/
+.model-workspace/
+*.mcp.lock
 .DS_Store

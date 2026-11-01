@@ -62,7 +62,10 @@ try {
       check(changed.flows.filter(flow => flow.sourceRef === task.id || flow.targetRef === task.id).every(flow => flow.waypoints.length >= 2), 'Move retains incident routes');
       changed = addNode(model, 'manualTask', { x: 120, y: 120, laneId: model.lanes[0].id, id: 'test_added_task' });
       check(changed.nodes.find(node => node.id === 'test_added_task').laneId === model.lanes[0].id, 'New node assigned to Lane');
-      changed = addFlow(changed, user.id, 'test_added_task');
+      throws(() => addFlow(changed, user.id, 'test_added_task', { id: user.id }), 'Reject flow ID collisions');
+      throws(() => addFlow(changed, user.id, 'test_added_task', { id: 'invalid id' }), 'Reject invalid flow IDs');
+      changed = addFlow(changed, user.id, 'test_added_task', { id: 'test_added_flow' });
+      check(changed.flows.some(flow => flow.id === 'test_added_flow'), 'Explicit flow ID is preserved');
       check(changed.flows.some(flow => flow.sourceRef === user.id && flow.targetRef === 'test_added_task'), 'Connect nodes');
       throws(() => addFlow(changed, user.id, 'test_added_task'), 'Reject duplicate connections');
       changed = removeElement(changed, 'test_added_task');

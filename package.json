@@ -7,14 +7,19 @@
     "dev": "vite --host 127.0.0.1 --port 5174",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "mcp": "node mcp/server.mjs",
+    "test:mcp": "node --test tests/mcp.spec.mjs",
     "test:model": "node tests/model.spec.mjs",
     "test:ui": "node tests/studio.spec.mjs",
-    "test": "npm run test:model && npm run test:ui"
+    "test": "npm run test:model && npm run test:mcp && npm run test:ui"
   },
   "dependencies": {
     "@fipu/bpmn": "file:packages/bpmn",
+    "@mdi/js": "7.4.47",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "jsdom": "27.4.0",
     "vue": "3.5.44",
-    "@mdi/js": "7.4.47"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
