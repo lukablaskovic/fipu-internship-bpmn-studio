@@ -6,16 +6,9 @@ This server gives Codex, Claude Code, and other MCP clients structured access to
 
 Run `npm ci` in the Studio repository first. The server requires `--models-dir` and only accesses existing `.bpmn` or `.xml` files directly within that directory. Symlinks, subdirectories, and paths outside it are rejected. Back up or version your models before editing.
 
-In the full FIPU Praksa workspace, use `python-bpmn-engine/models/`: these are the owning sources. Studio's `public/models/` files are generated snapshots, overwritten by `make bpmn-sync`.
+Use `python-bpmn-engine/models/`, the sole owner of Models A and B. Studio defaults to that sibling directory, or uses `BPMN_MODELS_DIR`; MCP uses the same absolute directory via `--models-dir`. There are no bundled Studio templates or dashboard XML copies. Do not create another working directory for ordinary editing.
 
-For a standalone Studio checkout, copy the A/B templates to your own working directory:
-
-```sh
-mkdir -p .model-workspace
-cp public/models/*.bpmn .model-workspace/
-```
-
-This folder is ignored by Git. Import the edited file into Studio for visual review. The browser's existing draft is separate and will not automatically reflect disk changes.
+Studio and MCP share the same revision-checked atomic file writer and lock. Reload Studio after an agent edit: clean drafts follow the current file, while conflicting recovery drafts require review and cannot silently overwrite an agent's work. New engine instances load the current file; existing live instances keep their graph. Saving does not start instances or deploy services.
 
 ## Register with Codex or Claude Code
 
@@ -27,8 +20,6 @@ STUDIO_DIR="$PWD"
 # Full Praksa workspace: edit the actual engine model sources.
 MODEL_DIR="$(cd ../python-bpmn-engine/models && pwd)"
 
-# Or, for a standalone checkout, use your working copies instead:
-# MODEL_DIR="$STUDIO_DIR/.model-workspace"
 ```
 
 For Codex:
@@ -82,7 +73,7 @@ An edit batch accepts `update_element`, `move_element`, `add_node`, `add_flow`, 
 2. Build a complete batch, then call `bpmn_edit_model` with `save: false` (the default).
 3. Review `changes` and `issues`. Set `includeXml: true` when you need the proposed XML. Errors block saving; warnings remain visible.
 4. Repeat the reviewed batch with the same `expectedRevision` and `save: true`. If the file changed meanwhile, read it again and prepare a new preview.
-5. Inspect the Git diff and import the file into Studio for a visual check.
+5. Inspect the Git diff and reload the model in Studio for a visual check.
 
 For example, after reading the file, preview a task description change:
 

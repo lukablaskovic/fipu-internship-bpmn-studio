@@ -1,8 +1,10 @@
+import { mockModelSource } from './model-source.mjs';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+await mockModelSource(context);
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
@@ -10,7 +12,7 @@ page.on('console', message => { if (message.type() === 'warning' && /missing|req
 const review = name => fileURLToPath(new URL(`../.impeccable/review/reka-${name}.png`, import.meta.url));
 try {
   await page.goto(process.env.STUDIO_URL || 'http://127.0.0.1:5174');
-  await expect(page.locator('.bpmn-node')).toHaveCount(31);
+  await expect(page.locator('.bpmn-node')).toHaveCount(35);
   const tabA = page.getByRole('tab', { name: 'Model A Dodjela zadatka', exact: true });
   const tabB = page.getByRole('tab', { name: 'Model B Izravna prijava', exact: true });
   await tabA.focus();
@@ -18,7 +20,7 @@ try {
   await expect(tabB).toBeFocused();
   await expect(tabA).toHaveAttribute('aria-selected', 'true');
   await tabB.press('Enter');
-  await expect(page.locator('.bpmn-node')).toHaveCount(21);
+  await expect(page.locator('.bpmn-node')).toHaveCount(24);
   await expect(tabB).toHaveAttribute('aria-selected', 'true');
   await tabA.click();
   await page.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();

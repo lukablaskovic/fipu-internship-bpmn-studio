@@ -1,3 +1,4 @@
+import { modelXml, mockModelSource } from './model-source.mjs';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -8,12 +9,13 @@ const origin = process.env.STUDIO_URL || 'http://127.0.0.1:5174';
 const review = new URL('../.impeccable/review/', import.meta.url);
 await mkdir(review, { recursive: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+await mockModelSource(context);
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 let nativeWarnings = 0;
 page.on('dialog', async dialog => { assert.equal(dialog.type(), 'beforeunload'); nativeWarnings++; await dialog.accept(); });
-const save = page.getByRole('button', { name: 'Spremi', exact: true });
+const save = page.getByRole('button', { name: /^Spremi( skicu)?$/, exact: true });
 const dialog = page.getByRole('alertdialog', { name: 'Nespremljene izmjene' });
 const tabA = page.getByRole('tab', { name: 'Model A Dodjela zadatka', exact: true });
 const tabB = page.getByRole('tab', { name: 'Model B Izravna prijava', exact: true });
@@ -23,7 +25,7 @@ const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem('fipu-bp
 
 try {
   await page.goto(origin);
-  await expect(page.locator('.bpmn-node')).toHaveCount(31);
+  await expect(page.locator('.bpmn-node')).toHaveCount(35);
   await expect(save).toBeDisabled();
   await selectTask('Spremanje preferencija u baserow');
   await name.fill('Spremljeno tipkovnicom');
@@ -73,7 +75,7 @@ try {
   await tabA.click();
   await selectTask('Spremljeno prije prijelaza');
 
-  await page.getByRole('button', { name: 'Servisni zadatak Service Task', exact: true }).click();
+  await page.getByRole('button', { name: 'Ručni zadatak Manual Task', exact: true }).click();
   await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Poništi izmjenu', exact: true }).click();
   await expect(save).toBeDisabled();
@@ -81,7 +83,7 @@ try {
   await expect(save).toBeEnabled();
   await save.click();
   await expect(save).toBeDisabled();
-  await expect(page.locator('.bpmn-node')).toHaveCount(32);
+  await expect(page.locator('.bpmn-node')).toHaveCount(36);
   await selectTask('Spremljeno prije prijelaza');
   await page.getByLabel('URL parametri JSON objekt', { exact: true }).fill('{');
   await tabB.click();
@@ -107,7 +109,7 @@ try {
   assert.equal(nativeWarnings, 1);
 
   await page.setViewportSize({ width: 1440, height: 960 });
-  const xmlA = await readFile(new URL('../public/models/strucna_praksa_A.bpmn', import.meta.url));
+  const xmlA = Buffer.from(await modelXml('A'));
   await page.locator('input[type=file]').setInputFiles({ name: 'spremanje.bpmn', mimeType: 'application/xml', buffer: xmlA });
   await selectTask('Spremanje preferencija u baserow');
   await name.fill('Spremljeni uvoz');
@@ -119,7 +121,8 @@ try {
   assert.equal(nativeWarnings, 1);
 
   const blocked = await browser.newContext();
-  await blocked.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException('Storage disabled', 'SecurityError'); }; });
+  await mockModelSource(blocked);
+  await blocked.route('**/api/models/*', route => route.request().method() === 'PUT' ? route.fulfill({ status: 500, json: { error: 'Datoteka se ne može spremiti.' } }) : route.fallback());
   const blockedPage = await blocked.newPage();
   await blockedPage.goto(origin);
   await blockedPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
@@ -129,18 +132,32 @@ try {
   await expect(blockedPage.getByRole('tab', { name: 'Model A Dodjela zadatka' })).toHaveAttribute('aria-selected', 'true');
   await expect(blockedPage.getByLabel('Naziv', { exact: true })).toHaveValue('Zadrži pri grešci spremanja');
   await expect(blockedPage.getByRole('button', { name: 'Spremi', exact: true })).toBeEnabled();
-  await expect(blockedPage.getByText('Preglednik ne može spremiti skicu.', { exact: false })).toBeVisible();
+  await expect(blockedPage.getByText('Datoteka se ne može spremiti.', { exact: false })).toBeVisible();
   await blocked.close();
 
   const legacy = await browser.newContext();
+  await mockModelSource(legacy);
   await legacy.addInitScript(xml => {
     localStorage.setItem('fipu-bpmn-studio:v1:A', JSON.stringify({ xml: xml.replace('name="Spremanje preferencija u baserow"', 'name="Starija skica"') }));
   }, xmlA.toString());
   const legacyPage = await legacy.newPage();
   await legacyPage.goto(origin);
+  await legacyPage.getByRole('button', { name: 'Otvori lokalnu skicu', exact: true }).click();
   await expect(legacyPage.getByRole('button', { name: 'Starija skica Service Task', exact: true })).toBeVisible();
-  await expect(legacyPage.getByRole('button', { name: 'Spremi', exact: true })).toBeDisabled();
+  await expect(legacyPage.getByRole('button', { name: 'Spremi', exact: true })).toBeEnabled();
   await legacy.close();
+  const conflict = await browser.newContext();
+  const sources = await mockModelSource(conflict);
+  const conflictPage = await conflict.newPage();
+  await conflictPage.goto(origin);
+  await conflictPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
+  await conflictPage.getByLabel('Naziv', { exact: true }).fill('Browser draft');
+  sources.A = sources.A.replace('name="Spremanje preferencija u baserow"', 'name="Agent edit"');
+  await conflictPage.getByRole('button', { name: 'Spremi', exact: true }).click();
+  await expect(conflictPage.getByRole('alert')).toContainText('izmijenjen izvan Studija');
+  await expect(conflictPage.getByLabel('Naziv', { exact: true })).toHaveValue('Browser draft');
+  assert(sources.A.includes('Agent edit') && !sources.A.includes('Browser draft'));
+  await conflict.close();
   assert.deepEqual(errors, []);
   console.log('Explicit save, unsaved guards, native/custom refresh, recovery, imports, mobile and failure checks passed.');
 } finally { await browser.close(); }

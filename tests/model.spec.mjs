@@ -1,3 +1,4 @@
+import { modelXml } from './model-source.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -6,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_PACKAGE || '@playwright/test');
 const root = new URL('../', import.meta.url);
 const source = await readFile(new URL('packages/bpmn/model.js', root), 'utf8');
-const models = await Promise.all(['A', 'B'].map(async name => ({ name, xml: await readFile(new URL(`public/models/strucna_praksa_${name}.bpmn`, root), 'utf8') })));
+const models = await Promise.all(['A', 'B'].map(async name => ({ name, xml: await modelXml(name) })));
 const catalog = JSON.parse(await readFile(new URL('public/connectors.json', root), 'utf8'));
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
 try {
@@ -25,6 +26,18 @@ try {
       check(signatures(model) === signatures(parseModel(exported)), `${name}: model semantic and DI round trip`);
       const errors = validateModel(model, catalog.connectors).filter(issue => issue.severity === 'error');
       check(errors.length === 0, `${name}: template validation: ${JSON.stringify(errors)}`);
+      const startFlows = model.flows.filter(flow => flow.sourceRef === 'start_event_student');
+      check(startFlows.length === 1, `${name}: Start has one outgoing flow`);
+      const split = model.nodes.find(node => node.id === startFlows[0].targetRef);
+      check(split?.type === 'parallelGateway', `${name}: Start leads to an AND split`);
+      check(model.flows.some(flow => flow.sourceRef === split.id && flow.targetRef === 'odustajanje_od_prakse'), `${name}: AND split activates withdrawal`);
+      check(model.nodes.find(node => node.id === 'odustajanje_od_prakse')?.type === 'intermediateCatchEvent', 'Withdrawal is a message catch event');
+      check(model.nodes.find(node => node.id === 'end_event_odustajanje')?.terminate && model.nodes.find(node => node.id === 'end_event_odustajanje')?.outcome === 'cancelled', 'Withdrawal terminates the process with a cancelled outcome');
+      check(model.nodes.find(node => node.id === 'end_event_student')?.terminate, 'Normal completion terminates the unused withdrawal listener');
+      const invalidEnd = updateElement(model, 'end_event_odustajanje', { terminate: false });
+      check(validateModel(invalidEnd, catalog).some(issue => issue.message.includes('Cancelled outcomes')), 'Cancelled outcomes cannot silently become normal end events');
+      const noMessage = parseModel(exported.replace('<bpmn:messageEventDefinition/>', ''));
+      check(validateModel(noMessage, catalog).some(issue => issue.message.includes('Message Event Definition')), 'Catch events need a supported definition');
       if (name === 'B') {
         check(validateModel(model, catalog.connectors).length === 0, 'Model B has no validation warnings');
         check(!model.nodes.some(node => node.id === 'Activity_0dri58t'), 'Unused Model B placeholder removed');
@@ -47,7 +60,7 @@ try {
       check(edited.name === '<Unsafe & name>' && edited.documentation === 'Line one\nLine two < &', 'XML text escapes safely');
       check(edited.inputs.list[1] === '${b}' && edited.inputs.map.entry === '<x>' && edited.connector.parameters.to === '${student_email}', 'Parameter shapes survive round trip');
       check(validateModel(changed, catalog.connectors).some(issue => issue.id === task.id && issue.message.includes('registered connector operation')), 'Unknown connector operation is rejected by the actual catalog');
-      const email = model.nodes.find(node => node.connector?.id === 'sendgrid');
+      const email = model.nodes.find(node => node.connector?.id === 'emailjs');
       const missingTemplate = { ...email.connector.parameters };
       delete missingTemplate.template;
       for (const parameters of [missingTemplate, { ...email.connector.parameters, template: 'unknown_template' }]) {

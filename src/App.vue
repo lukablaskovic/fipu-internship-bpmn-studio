@@ -34,6 +34,8 @@ const history = ref([]);
 const future = ref([]);
 const exportedXml = ref('');
 const savedXml = ref('');
+const sourceRevision = ref('');
+const saving = ref(false);
 const draftStored = ref(true);
 const importInput = ref(null);
 const showIssues = ref(false);
@@ -44,7 +46,7 @@ const palette = [
   ['userTask', 'Korisnički zadatak', 'user'], ['serviceTask', 'Servisni zadatak', 'service'],
   ['sendTask', 'Zadatak slanja', 'send'], ['manualTask', 'Ručni zadatak', 'manual'],
   ['task', 'Zadatak', 'task'], ['exclusiveGateway', 'Isključivo grananje', 'exclusive'],
-  ['parallelGateway', 'Paralelno grananje', 'parallel'], ['startEvent', 'Početni događaj', 'start'], ['endEvent', 'Završni događaj', 'end'],
+  ['parallelGateway', 'Paralelno grananje', 'parallel'], ['intermediateCatchEvent', 'Međudogađaj poruke', 'start'], ['startEvent', 'Početni događaj', 'start'], ['endEvent', 'Završni događaj', 'end'],
 ];
 const currentXml = computed(() => model.value ? serializeModel(model.value) : '');
 const selected = computed(() => [...(model.value?.nodes || []), ...(model.value?.flows || [])].find(n => n.id === selectedId.value));
@@ -63,7 +65,7 @@ function readDraft(key) {
 }
 function persist(saved = savedXml.value) {
   try {
-    const draft = { xml: currentXml.value, name: importedName.value, exportedXml: exportedXml.value, savedXml: saved };
+    const draft = { xml: currentXml.value, name: importedName.value, exportedXml: exportedXml.value, savedXml: saved, baseRevision: sourceRevision.value };
     localStorage.setItem('fipu-bpmn-studio:active', activeModel.value);
     localStorage.setItem(storageKey(), JSON.stringify(draft));
     if (activeModel.value === 'import') importedDraft.value = draft;
@@ -72,18 +74,34 @@ function persist(saved = savedXml.value) {
   }
   catch { draftStored.value = false; notice.value = 'Preglednik ne može spremiti skicu. Izvezite BPMN prije zatvaranja.'; return false; }
 }
-function saveModel() {
-  if (!model.value || loading.value || (inspectorDirty.value && !applyInspector())) return false;
+async function saveModel() {
+  if (!model.value || loading.value || saving.value || (inspectorDirty.value && !applyInspector())) return false;
   resetInspector();
-  if (!persist(currentXml.value)) return false;
-  savedXml.value = currentXml.value;
-  error.value = ''; notice.value = 'Model je spremljen u ovom pregledniku.';
-  return true;
+  const xml = currentXml.value;
+  saving.value = true;
+  try {
+    if (activeModel.value !== 'import') {
+      if (!sourceRevision.value) throw new Error('Skica nema aktualnu reviziju izvornog modela. Izvezite je i ponovno učitajte model.');
+      const response = await fetch(`/api/models/strucna_praksa_${activeModel.value}.bpmn`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Praksa-Editor': '1' },
+        body: JSON.stringify({ xml, expectedRevision: sourceRevision.value }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Spremanje modela nije uspjelo.');
+      sourceRevision.value = result.revision;
+    } else if (!persist(xml)) return false;
+    savedXml.value = xml;
+    persist(); error.value = '';
+    notice.value = activeModel.value === 'import' ? 'Uvezena skica je spremljena u ovom pregledniku.' : 'Izvorna BPMN datoteka je spremljena. Engine koristi izmjene za nove instance.';
+    return !unsaved.value;
+  } catch (e) { error.value = e.message || 'Spremanje modela nije uspjelo.'; return false; }
+  finally { saving.value = false; }
 }
 function resetInspector() {
   const element = selected.value;
   inspector.value = element ? {
     name: element.name || '', documentation: element.documentation || '', condition: element.condition || '', laneId: element.laneId || '', default: element.default || '',
+    termination: element.terminate ? 'terminate' : 'normal', outcome: element.outcome,
     connector: { id: element.connector?.id || 'baserow', method: element.connector?.method || 'POST', url: element.connector?.url || '' },
     parameters: json(element.connector?.parameters), inputs: json(element.inputs), outputs: json(element.outputs),
     formFields: (element.formFields || []).map(f => ({ ...f, propertiesText: json(f.properties), validationText: json(f.validation) })),
@@ -95,6 +113,7 @@ async function leaveInspector() {
   return !inspectorDirty.value || await ask('Svojstva još nisu primijenjena. Odbaciti te izmjene?', 'Odbaci izmjene');
 }
 async function leaveModel() {
+  if (saving.value) return false;
   if (!unsaved.value) return true;
   const choice = await ask('Model ima nespremljene izmjene. Spremite ih prije nastavka ili ih odbacite.', 'Odbaci izmjene', 'Spremi i nastavi');
   if (choice === 'save') return saveModel();
@@ -167,6 +186,7 @@ function applyInspector() {
   try {
     const value = inspector.value;
     const patch = { name: value.name, documentation: value.documentation };
+    if (selected.value.type === 'endEvent') { patch.terminate = value.termination === 'terminate'; patch.outcome = patch.terminate ? value.outcome : 'finished'; }
     if (selected.value.type === 'exclusiveGateway') patch.default = value.default;
     if (selected.value.type === 'sequenceFlow') patch.condition = value.condition;
     else patch.laneId = value.laneId;
@@ -184,20 +204,26 @@ async function loadModel(key) {
   const version = ++loadVersion;
   loading.value = true; error.value = '';
   try {
-    const response = await fetch(`/models/strucna_praksa_${key}.bpmn`);
-    if (!response.ok) throw new Error('Model nije dostupan. Pokrenite sinkronizaciju modela i pokušajte ponovno.');
-    const xml = await response.text();
+    const response = await fetch(`/api/models/strucna_praksa_${key}.bpmn`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Model nije dostupan. Provjerite BPMN_MODELS_DIR na Studio poslužitelju.');
+    const { xml, revision } = await response.json();
     if (version !== loadVersion) return;
     const original = parseModel(xml);
     activeModel.value = key; importedName.value = '';
     exportedXml.value = serializeModel(original);
+    sourceRevision.value = revision;
+    savedXml.value = exportedXml.value;
     let draft;
     try { draft = JSON.parse(readDraft(storageKey()) || 'null'); }
     catch { notice.value = 'Spremljena skica nije čitljiva. Otvoren je izvorni model.'; }
-    try { model.value = draft?.xml ? parseModel(draft.xml) : original; }
+    let restore = draft?.xml && (draft.baseRevision === revision || (!draft.baseRevision && draft.exportedXml === exportedXml.value));
+    if (draft?.xml && !restore && draft.xml !== exportedXml.value && (!draft.baseRevision || draft.xml !== draft.savedXml)) {
+      restore = await ask('Izvorni model je promijenjen. Otvoriti prethodnu lokalnu skicu za pregled i izvoz? Odustani otvara aktualni izvorni model.', 'Otvori lokalnu skicu');
+      if (version !== loadVersion) return;
+      if (restore) sourceRevision.value = draft.baseRevision || '';
+    }
+    try { model.value = restore ? parseModel(draft.xml) : original; }
     catch { model.value = original; notice.value = 'Skica sadrži neispravan XML. Otvoren je izvorni model.'; }
-    try { savedXml.value = draft?.savedXml ? serializeModel(parseModel(draft.savedXml)) : currentXml.value; }
-    catch { savedXml.value = exportedXml.value; }
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = '';
     showIssues.value = false;
     try { localStorage.setItem('fipu-bpmn-studio:active', key); } catch { draftStored.value = false; }
@@ -211,7 +237,7 @@ async function restoreImport() {
     const draft = importedDraft.value;
     const parsed = parseModel(draft.xml);
     const saved = draft.savedXml ? serializeModel(parseModel(draft.savedXml)) : serializeModel(parsed);
-    ++loadVersion; activeModel.value = 'import'; importedName.value = draft.name || 'model.bpmn';
+    ++loadVersion; sourceRevision.value = ''; activeModel.value = 'import'; importedName.value = draft.name || 'model.bpmn';
     model.value = parsed; exportedXml.value = draft.exportedXml || draft.xml;
     savedXml.value = saved;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = '';
@@ -228,7 +254,7 @@ async function importFile(event) {
   try {
     const imported = parseModel(await file.text());
     ++loadVersion;
-    activeModel.value = 'import'; importedName.value = file.name;
+    activeModel.value = 'import'; sourceRevision.value = ''; importedName.value = file.name;
     model.value = imported; exportedXml.value = currentXml.value; savedXml.value = currentXml.value;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = ''; showIssues.value = true;
     loading.value = false; error.value = ''; notice.value = `Otvoreno: ${file.name}`;
@@ -335,7 +361,7 @@ onBeforeUnmount(() => { media.removeEventListener('change', resizeWorkspace); wi
     </header>
     <div class="workspace-bar">
       <TabsList class="model-tabs" aria-label="Modeli prakse"><TabsTrigger value="A">Model A <small>Dodjela zadatka</small></TabsTrigger><TabsTrigger value="B">Model B <small>Izravna prijava</small></TabsTrigger><TabsTrigger v-if="importedDraft" value="import" class="import-tab">Uvezena skica<small>{{ importedDraft.name }}</small></TabsTrigger></TabsList>
-      <div class="file-actions"><span v-if="model" class="draft-status" role="status">{{ unsaved ? 'Nespremljene izmjene' : 'Spremljeno' }}</span><Primitive as-child><input ref="importInput" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden @change="importFile"></Primitive><StudioButton @click="importInput.click()"><Icon name="upload" /> Uvezi</StudioButton><StudioButton :disabled="!model || loading" @click="download"><Icon name="download" /> Izvezi BPMN</StudioButton><StudioButton class="primary" :disabled="!model || loading || (!unsaved && draftStored)" title="Spremi u preglednik (Ctrl/⌘ S)" aria-keyshortcuts="Control+s Meta+s" @click="saveModel"><Icon name="save" /> Spremi</StudioButton></div>
+      <div class="file-actions"><span v-if="model" class="draft-status" role="status">{{ unsaved ? 'Nespremljene izmjene' : 'Spremljeno' }}</span><Primitive as-child><input ref="importInput" type="file" accept=".bpmn,.xml,application/xml,text/xml" hidden @change="importFile"></Primitive><StudioButton @click="importInput.click()"><Icon name="upload" /> Uvezi</StudioButton><StudioButton :disabled="!model || loading" @click="download"><Icon name="download" /> Izvezi BPMN</StudioButton><StudioButton class="primary" :disabled="!model || loading || (!unsaved && (activeModel !== 'import' || draftStored)) || saving" :title="activeModel === 'import' ? 'Spremi skicu u preglednik (Ctrl/⌘ S)' : 'Spremi izvornu datoteku (Ctrl/⌘ S)'" aria-keyshortcuts="Control+s Meta+s" @click="saveModel"><Icon name="save" /> {{ saving ? 'Spremanje…' : activeModel === 'import' ? 'Spremi skicu' : 'Spremi' }}</StudioButton></div>
     </div>
     <div v-if="error" class="message error" role="alert"><Icon name="info" /><span>{{ error }}</span><StudioButton aria-label="Zatvori pogrešku" @click="error = ''"><Icon name="close" /></StudioButton></div>
     <div v-if="notice" class="message notice" role="status"><Icon name="info" /><span>{{ notice }}</span><StudioButton aria-label="Zatvori obavijest" @click="notice = ''"><Icon name="close" /></StudioButton></div>
@@ -347,8 +373,7 @@ onBeforeUnmount(() => { media.removeEventListener('change', resizeWorkspace); wi
         <div class="element-list"><StudioButton v-for="node in filteredNodes" :key="node.id" :class="{ active: selectedId === node.id }" @click="selectFromList(node.id)"><span class="node-dot" :class="node.type"></span><span>{{ node.name || node.id }}<small>{{ typeName(node.type) }}</small></span></StudioButton><p v-if="model && !filteredNodes.length" class="empty-search">Nema pronađenih elemenata.</p></div>
       </StudioPanel>
       <main class="canvas-panel" aria-label="Radna površina">
-        <PopoverRoot v-model:open="showIssues"><ToolbarRoot class="canvas-toolbar" aria-label="Uređivanje modela"><div class="toolbar-group"><ToolbarButton v-if="compact" as-child><StudioButton ref="libraryOpener" class="icon-button mobile-only" aria-label="Otvori elemente" :aria-expanded="paletteVisible" @click="toggleLibrary"><Icon name="menu" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!history.length"><StudioButton class="icon-button" :disabled="!history.length" aria-label="Poništi izmjenu" title="Poništi (Ctrl/⌘ Z)" @click="undo"><Icon name="undo" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!future.length"><StudioButton class="icon-button" :disabled="!future.length" aria-label="Ponovi izmjenu" title="Ponovi (Ctrl/⌘ Shift Z)" @click="redo"><Icon name="redo" /></StudioButton></ToolbarButton><ToolbarSeparator class="toolbar-divider" /><ToolbarButton as-child><Toggle :model-value="connecting" :disabled="!model" @update:model-value="connect" as-child><StudioButton :class="{ pressed: connecting }"><Icon name="link" /><span>Poveži</span></StudioButton></Toggle></ToolbarButton></div><PopoverTrigger as-child><ToolbarButton as-child><StudioButton class="validate-button" :class="{ 'has-errors': errors.length }" :disabled="!model" ><Icon :name="errors.length ? 'info' : 'check'" /><span>Provjeri model</span><span v-if="errors.length" class="count">{{ errors.length }}</span></StudioButton></ToolbarButton></PopoverTrigger></ToolbarRoot><PopoverPortal><PopoverContent side="bottom" align="end" :side-offset="8" class="validation-panel"><div class="panel-heading"><h2>{{ errors.length ? `${errors.length} pogrešaka u modelu` : 'Provjera modela' }}</h2><PopoverClose as-child><StudioButton class="icon-button" aria-label="Zatvori provjeru"><Icon name="close" /></StudioButton></PopoverClose></div><p v-if="!issues.length" class="valid-result"><Icon name="check" /> Model je spreman za izvoz.</p><ul v-if="issues.length"><li v-for="(issue, index) in issues" :key="index" :class="issue.severity"><StudioButton @click="issue.id && selectFromList(issue.id)"><b>{{ issue.severity === 'error' ? 'Pogreška' : 'Napomena' }}</b> {{ issue.message }}<code v-if="issue.id">{{ issue.id }}</code></StudioButton></li></ul></PopoverContent></PopoverPortal></PopoverRoot>
-        <div class="canvas-title"><h1>{{ activeModel === 'import' ? importedName.replace(/\.(xml|bpmn)$/i, '') : `Stručna praksa · Model ${activeModel}` }}</h1></div>
+        <PopoverRoot v-model:open="showIssues"><ToolbarRoot class="canvas-toolbar" aria-label="Uređivanje modela"><div class="toolbar-group"><div class="canvas-title"><h1>{{ activeModel === 'import' ? importedName.replace(/\.(xml|bpmn)$/i, '') : `Stručna praksa · Model ${activeModel}` }}</h1></div><ToolbarButton v-if="compact" as-child><StudioButton ref="libraryOpener" class="icon-button mobile-only" aria-label="Otvori elemente" :aria-expanded="paletteVisible" @click="toggleLibrary"><Icon name="menu" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!history.length"><StudioButton class="icon-button" :disabled="!history.length" aria-label="Poništi izmjenu" title="Poništi (Ctrl/⌘ Z)" @click="undo"><Icon name="undo" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!future.length"><StudioButton class="icon-button" :disabled="!future.length" aria-label="Ponovi izmjenu" title="Ponovi (Ctrl/⌘ Shift Z)" @click="redo"><Icon name="redo" /></StudioButton></ToolbarButton><ToolbarSeparator class="toolbar-divider" /><ToolbarButton as-child><Toggle :model-value="connecting" :disabled="!model" @update:model-value="connect" as-child><StudioButton :class="{ pressed: connecting }"><Icon name="link" /><span>Poveži</span></StudioButton></Toggle></ToolbarButton></div><PopoverTrigger as-child><ToolbarButton as-child><StudioButton class="validate-button" :class="{ 'has-errors': errors.length }" :disabled="!model" ><Icon :name="errors.length ? 'info' : 'check'" /><span>Provjeri model</span><span v-if="errors.length" class="count">{{ errors.length }}</span></StudioButton></ToolbarButton></PopoverTrigger></ToolbarRoot><PopoverPortal><PopoverContent side="bottom" align="end" :side-offset="8" class="validation-panel"><div class="panel-heading"><h2>{{ errors.length ? `${errors.length} pogrešaka u modelu` : 'Provjera modela' }}</h2><PopoverClose as-child><StudioButton class="icon-button" aria-label="Zatvori provjeru"><Icon name="close" /></StudioButton></PopoverClose></div><p v-if="!issues.length" class="valid-result"><Icon name="check" /> Model je spreman za izvoz.</p><ul v-if="issues.length"><li v-for="(issue, index) in issues" :key="index" :class="issue.severity"><StudioButton @click="issue.id && selectFromList(issue.id)"><b>{{ issue.severity === 'error' ? 'Pogreška' : 'Napomena' }}</b> {{ issue.message }}<code v-if="issue.id">{{ issue.id }}</code></StudioButton></li></ul></PopoverContent></PopoverPortal></PopoverRoot>
         <div v-if="loading" class="canvas-empty" role="status">Učitavanje modela…</div>
         <BpmnDiagram v-else-if="model" ref="diagram" :model="model" :selected-id="selectedId" editable :connecting="connecting" @select="select" @move="moveNode" @background="async () => { if (!connecting && await leaveInspector()) selectedId = ''; }" />
         <div v-else class="canvas-empty">Model nije učitan.<StudioButton @click="loadModel('A')">Pokušaj ponovno</StudioButton></div>
@@ -361,6 +386,10 @@ onBeforeUnmount(() => { media.removeEventListener('change', resizeWorkspace); wi
           <form class="inspector-form" @submit.prevent="applyInspector">
             <Label>Naziv<Primitive as-child><textarea v-model="inspector.name" rows="2" /></Primitive></Label>
             <StudioSelect v-if="selected.type !== 'sequenceFlow'" v-model="inspector.laneId" label="Sudionik / staza" :options="[{ value: '', label: 'Bez staze' }, ...model.lanes.map(lane => ({ value: lane.id, label: lane.name }))]" />
+            <template v-if="selected.type === 'endEvent'">
+              <StudioSelect v-model="inspector.termination" label="Završetak" :options="[{ value: 'normal', label: 'Završi ovu granu' }, { value: 'terminate', label: 'Prekini cijeli proces' }]" />
+              <StudioSelect v-if="inspector.termination === 'terminate'" v-model="inspector.outcome" label="Ishod" :options="[{ value: 'finished', label: 'Uspješno završeno' }, { value: 'cancelled', label: 'Odustajanje' }]" />
+            </template>
             <StudioSelect v-if="selected.type === 'exclusiveGateway'" v-model="inspector.default" label="Zadani tok" :options="[{ value: '', label: 'Bez zadanog toka' }, ...model.flows.filter(f => f.sourceRef === selected.id).map(flow => ({ value: flow.id, label: flow.name || flow.id }))]">Koristi se ako nijedan uvjet nije zadovoljen.</StudioSelect>
             <Label>Dokumentacija<Primitive as-child><textarea v-model="inspector.documentation" rows="3" placeholder="Opišite svrhu ovog koraka…" /></Primitive></Label>
             <template v-if="selected.type === 'sequenceFlow'"><div class="field-section"><h3>Uvjet prijelaza</h3><Label>Izraz<Primitive as-child><input v-model="inspector.condition" placeholder="kandidat_odobren:True"></Primitive><small>Format enginea: naziv_varijable:vrijednost. Prazno za bezuvjetni tok.</small></Label><dl class="connection-details"><dt>Izvor</dt><dd>{{ selected.sourceRef }}</dd><dt>Odredište</dt><dd>{{ selected.targetRef }}</dd></dl></div></template>

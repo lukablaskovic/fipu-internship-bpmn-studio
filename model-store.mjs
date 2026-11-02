@@ -1,0 +1,45 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+export const revision = xml => createHash('sha256').update(xml).digest('hex');
+export function createModelStore(root) {
+  const directory = realpathSync(root);
+  if (!lstatSync(directory).isDirectory()) throw new Error('Models path must be a directory.');
+  function readFile(file) {
+    if (!/^[^/\\\0]+\.(bpmn|xml)$/i.test(file)) throw new Error('Invalid model filename.');
+    const path = join(directory, file);
+    if (!lstatSync(path).isFile()) throw new Error('Only regular model files are supported; symbolic links are not allowed.');
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.size > 2_000_000) throw new Error('Model files must be regular files smaller than 2 MB.');
+      const xml = readFileSync(fd, 'utf8');
+      return { path, xml, revision: revision(xml), mode: stat.mode & 0o777 };
+    } finally { closeSync(fd); }
+  }
+
+  function save(file, expectedRevision, xml) {
+    const lock = join(directory, `.${file}.mcp.lock`);
+    let lockFd;
+    try { lockFd = openSync(lock, 'wx', 0o600); }
+    catch (error) {
+      if (error.code === 'EEXIST') throw new Error('Another Studio or MCP save holds the model lock. Retry after it finishes; see docs/mcp.md for stale locks.');
+      throw error;
+    }
+    const temporary = join(directory, `.${file}.${randomUUID()}.tmp`);
+    try {
+      const current = readFile(file);
+      if (current.revision !== expectedRevision) throw new Error('Model changed since it was read. Read it again and review a new preview.');
+      writeFileSync(temporary, xml, { flag: 'wx', mode: current.mode });
+      if (readFile(file).revision !== expectedRevision) throw new Error('Model changed during save; no changes were written.');
+      renameSync(temporary, current.path);
+    } finally {
+      try { unlinkSync(temporary); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      closeSync(lockFd);
+      unlinkSync(lock);
+    }
+  }
+
+  return { readFile, save };
+}

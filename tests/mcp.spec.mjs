@@ -1,3 +1,4 @@
+import { modelXml } from './model-source.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,8 +9,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const root = new URL('../', import.meta.url);
-const sourceA = await readFile(new URL('public/models/strucna_praksa_A.bpmn', root), 'utf8');
-const sourceB = await readFile(new URL('public/models/strucna_praksa_B.bpmn', root), 'utf8');
+const sourceA = await modelXml('A');
+const sourceB = await modelXml('B');
 
 test('MCP stdio edits actual BPMN files with validation, previews and revision guards', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'praksa mcp '));
@@ -49,7 +50,7 @@ test('MCP stdio edits actual BPMN files with validation, previews and revision g
     assert.equal((await call('bpmn_get_guidance')).catalog.connectors.length, 3);
     assert.deepEqual((await call('bpmn_list_models')).models, ['A.bpmn', 'B.bpmn']);
     const initial = await call('bpmn_read_model', { file: 'A.bpmn', includeXml: true });
-    assert.equal(initial.nodes.length, 31);
+    assert.equal(initial.nodes.length, 35);
     assert.equal(initial.xml, xmlA);
     assert((await call('bpmn_validate_model', { file: 'A.bpmn' })).valid);
     assert((await call('bpmn_validate_model', { file: 'B.bpmn' })).valid);
