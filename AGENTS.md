@@ -8,5 +8,5 @@
 - Keep credentials, server URLs and student records out of the bundled model/catalog files and logs.
 - Run `npm run build`, `npm run test:model` and relevant UI checks (`npm run test:ui` with the local server running). Browser tests require Playwright Chromium or `CHROME_PATH`.
 - In the multi-repository workspace, run `make bpmn-sync` and `make bpmn-check` after shared toolkit/renderer changes. The dashboard owns a generated vendor snapshot; edit the Studio source.
-- Engine changes belong in `python-bpmn-engine`; connector catalog changes belong in `internship-application-services/bpmn/connectors.json`. Studio saves the two authoritative files through its local model API; it must not invoke connectors or deploy production services.
+- Engine changes belong in `fipu-internship-bpmn-engine`; connector catalog changes belong in `fipu-internship-services/bpmn/connectors.json`. Studio saves the two authoritative files through its local model API; it must not invoke connectors or deploy production services.
 - `mcp/server.mjs` edits model files through the shared toolkit; keep its preview, revision, path and validation checks and reuse model-store.mjs for file writes. Test changes with `npm run test:mcp` using temporary model copies. See `docs/mcp.md` for agent setup and the owning engine model directory.

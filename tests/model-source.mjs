@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
-export const modelsDirectory = process.env.BPMN_MODELS_DIR || fileURLToPath(new URL('../../python-bpmn-engine/models', import.meta.url));
+export const modelsDirectory = process.env.BPMN_MODELS_DIR || fileURLToPath(new URL('../../fipu-internship-bpmn-engine/models', import.meta.url));
 export const modelXml = name => readFile(resolve(modelsDirectory, `strucna_praksa_${name}.bpmn`), 'utf8');
 
 // UI regressions must never save edits into the real model files.

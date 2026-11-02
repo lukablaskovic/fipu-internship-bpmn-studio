@@ -1,4 +1,5 @@
 <script setup>
+const baseUrl = import.meta.env.BASE_URL;
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import BpmnDiagram from '../packages/bpmn/BpmnDiagram.vue';
 import { parseModel, serializeModel, updateElement, moveElement, addNode, addFlow, removeElement, validateModel, TYPE_LABELS } from '../packages/bpmn/model.js';
@@ -7,6 +8,7 @@ import { Primitive, Label, TooltipProvider, TabsRoot, TabsList, TabsTrigger, Tab
 import StudioButton from './components/StudioButton.vue';
 import StudioSelect from './components/StudioSelect.vue';
 import StudioConfirm from './components/StudioConfirm.vue';
+import StudioHistory from './components/StudioHistory.vue';
 import StudioPanel from './components/StudioPanel.vue';
 
 const model = shallowRef(null);
@@ -15,6 +17,7 @@ const selectedId = ref('');
 const activeModel = ref('A');
 const importedName = ref('');
 const importedDraft = ref(null);
+const archived = shallowRef(null);
 const loading = ref(true);
 const error = ref('');
 const notice = ref('');
@@ -83,7 +86,7 @@ async function saveModel() {
   try {
     if (activeModel.value !== 'import') {
       if (!sourceRevision.value) throw new Error('Skica nema aktualnu reviziju izvornog modela. Izvezite je i ponovno učitajte model.');
-      const response = await fetch(`/api/models/strucna_praksa_${activeModel.value}.bpmn`, {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/models/strucna_praksa_${activeModel.value}.bpmn`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Praksa-Editor': '1' },
         body: JSON.stringify({ xml, expectedRevision: sourceRevision.value }),
       });
@@ -91,6 +94,7 @@ async function saveModel() {
       if (!response.ok) throw new Error(result.error || 'Spremanje modela nije uspjelo.');
       sourceRevision.value = result.revision;
       processVersion.value = result.version;
+      updateModelLink();
     } else if (!persist(xml)) return false;
     savedXml.value = xml;
     persist(); error.value = '';
@@ -201,23 +205,36 @@ function applyInspector() {
     return change(m => updateElement(m, selectedId.value, patch));
   } catch (e) { error.value = e.message; return false; }
 }
-async function loadModel(key) {
+function updateModelLink() {
+  if (location.pathname.slice(import.meta.env.BASE_URL.length).startsWith('admin/model/')) {
+    window.history.replaceState(null, '', activeModel.value === 'import' ? import.meta.env.BASE_URL + 'admin' : `${import.meta.env.BASE_URL}admin/model/strucna_praksa_${activeModel.value}/${processVersion.value}`);
+  }
+}
+async function loadModel(key, requestedVersion) {
   if (model.value && !(await leaveModel())) return;
   const version = ++loadVersion;
   loading.value = true; error.value = '';
   try {
-    const response = await fetch(`/api/models/strucna_praksa_${key}.bpmn`, { cache: 'no-store' });
+    const response = await fetch(`${import.meta.env.BASE_URL}api/models/strucna_praksa_${key}.bpmn`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Model nije dostupan. Provjerite BPMN_MODELS_DIR na Studio poslužitelju.');
     const { xml, revision, version: savedVersion } = await response.json();
     if (version !== loadVersion) return;
+    if (requestedVersion && requestedVersion !== String(savedVersion)) {
+      const historical = await fetch(`${import.meta.env.BASE_URL}api/models/strucna_praksa_${key}.bpmn/${requestedVersion}`, { cache: 'no-store' });
+      if (!historical.ok) throw new Error(`Model ${key} · v${requestedVersion} nije dostupan. Trenutno je objavljena verzija v${savedVersion}.`);
+      const definition = parseModel((await historical.json()).xml);
+      if (version === loadVersion) archived.value = { key, version: requestedVersion, definition };
+      return;
+    }
     const original = parseModel(xml);
     activeModel.value = key; importedName.value = '';
     exportedXml.value = serializeModel(original);
     sourceRevision.value = revision;
     processVersion.value = savedVersion;
+    updateModelLink();
     savedXml.value = exportedXml.value;
     let draft;
-    try { draft = JSON.parse(readDraft(storageKey()) || 'null'); }
+    try { if (!requestedVersion) draft = JSON.parse(readDraft(storageKey()) || 'null'); }
     catch { notice.value = 'Spremljena skica nije čitljiva. Otvoren je izvorni model.'; }
     let restore = draft?.xml && (draft.baseRevision === revision || (!draft.baseRevision && draft.exportedXml === exportedXml.value));
     if (draft?.xml && !restore && draft.xml !== exportedXml.value && (!draft.baseRevision || draft.xml !== draft.savedXml)) {
@@ -240,7 +257,7 @@ async function restoreImport() {
     const draft = importedDraft.value;
     const parsed = parseModel(draft.xml);
     const saved = draft.savedXml ? serializeModel(parseModel(draft.savedXml)) : serializeModel(parsed);
-    ++loadVersion; sourceRevision.value = ''; activeModel.value = 'import'; importedName.value = draft.name || 'model.bpmn';
+    ++loadVersion; sourceRevision.value = ''; activeModel.value = 'import'; updateModelLink(); importedName.value = draft.name || 'model.bpmn';
     model.value = parsed; exportedXml.value = draft.exportedXml || draft.xml;
     savedXml.value = saved;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = '';
@@ -257,7 +274,7 @@ async function importFile(event) {
   try {
     const imported = parseModel(await file.text());
     ++loadVersion;
-    activeModel.value = 'import'; sourceRevision.value = ''; importedName.value = file.name;
+    activeModel.value = 'import'; updateModelLink(); sourceRevision.value = ''; importedName.value = file.name;
     model.value = imported; exportedXml.value = currentXml.value; savedXml.value = currentXml.value;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = ''; showIssues.value = true;
     loading.value = false; error.value = ''; notice.value = `Otvoreno: ${file.name}`;
@@ -321,6 +338,7 @@ function addField() {
   fields.push({ id: `polje_${n}`, type: 'string', label: '', propertiesText: '{}', validationText: '{}' });
 }
 function keyboard(event) {
+  if (archived.value) return;
   if (event.defaultPrevented || event.isComposing || event.repeat) return;
   const refresh = event.key === 'F5' || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'r');
   if (refresh && unsaved.value) { event.preventDefault(); refreshPage(); return; }
@@ -347,9 +365,21 @@ watch(unsaved, value => { value ? window.addEventListener('beforeunload', unload
 onMounted(async () => {
   media.addEventListener('change', resizeWorkspace);
   window.addEventListener('keydown', keyboard);
-  try { const response = await fetch('/connectors.json'); if (!response.ok) throw new Error(); catalog.value = (await response.json()).connectors; }
+  try { const response = await fetch(import.meta.env.BASE_URL + 'connectors.json'); if (!response.ok) throw new Error(); catalog.value = (await response.json()).connectors; }
   catch { notice.value = 'Katalog konektora nije dostupan. Ponovno sinkronizirajte datoteke aplikacije.'; }
   try { importedDraft.value = JSON.parse(readDraft('fipu-bpmn-studio:v1:import') || 'null'); } catch { /* Invalid drafts remain on disk until explicitly replaced. */ }
+  if (location.pathname.slice(import.meta.env.BASE_URL.length).startsWith('admin/model/')) {
+    const link = location.pathname.slice(import.meta.env.BASE_URL.length).match(/^admin\/model\/strucna_praksa_([AB])\/([1-9]\d*)\/?$/);
+    if (link) await loadModel(link[1], link[2]);
+    else { error.value = 'Neispravna poveznica na verziju modela.'; loading.value = false; }
+    return;
+  }
+  const requested = new URLSearchParams(location.search).get('model');
+  if (['A', 'B'].includes(requested)) {
+    window.history.replaceState(null, '', location.pathname);
+    await loadModel(requested);
+    return;
+  }
   const active = readDraft('fipu-bpmn-studio:active');
   if (active === 'import' && importedDraft.value) restoreImport();
   else await loadModel(active === 'B' ? 'B' : 'A');
@@ -358,9 +388,14 @@ onBeforeUnmount(() => { media.removeEventListener('change', resizeWorkspace); wi
 </script>
 
 <template>
-  <TooltipProvider :delay-duration="350"><TabsRoot :model-value="activeModel" activation-mode="manual" @update:model-value="key => key === 'import' ? restoreImport() : loadModel(key)" as-child><div class="studio">
+  <main v-if="archived" style="height:100dvh;display:flex;flex-direction:column">
+    <header class="app-header archive-header"><h1>Model {{ archived.key }} · v{{ archived.version }}</h1><span>Samo za čitanje</span><a :href="baseUrl + 'admin?model=' + archived.key">Aktualni model</a></header>
+    <BpmnDiagram :model="archived.definition" style="flex:1;min-height:0" />
+  </main>
+  <TooltipProvider v-else :delay-duration="350"><TabsRoot :model-value="activeModel" activation-mode="manual" @update:model-value="key => key === 'import' ? restoreImport() : loadModel(key)" as-child><div class="studio">
     <header class="app-header">
-      <a class="brand" href="/" aria-label="Praksa BPMN Studio"><Icon name="workflow" :size="30" /><span>Praksa <strong>BPMN Studio</strong></span></a>
+      <a class="brand" :href="baseUrl" aria-label="Praksa BPMN Studio"><Icon name="workflow" :size="30" /><span>Praksa <strong>BPMN Studio</strong></span></a>
+      <StudioHistory v-if="model && !loading && activeModel !== 'import'" :key="activeModel" :model-key="activeModel" />
     </header>
     <div class="workspace-bar">
       <TabsList class="model-tabs" aria-label="Modeli prakse"><TabsTrigger value="A">Model A <small>Dodjela zadatka</small></TabsTrigger><TabsTrigger value="B">Model B <small>Izravna prijava</small></TabsTrigger><TabsTrigger v-if="importedDraft" value="import" class="import-tab">Uvezena skica<small>{{ importedDraft.name }}</small></TabsTrigger></TabsList>

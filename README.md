@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:5174>. `npm run build` creates a static site in `dist/`; `npm run preview` serves it on port 4174. The application runs independently of the dashboard and engine processes, but reads the authoritative model files from `../python-bpmn-engine/models/`. Set `BPMN_MODELS_DIR=/absolute/path/to/models` if the directory is elsewhere. The local Vite development/preview server provides the model API; a static-only deployment cannot save models.
+Open <http://localhost:5174>. `npm run build` creates a static site in `dist/`; `npm run preview` serves it on port 4174. The application runs independently of the dashboard and engine processes, but reads the authoritative model files from `../fipu-internship-bpmn-engine/models/`. Set `BPMN_MODELS_DIR=/absolute/path/to/models` if the directory is elsewhere. The local Vite development/preview server provides the model API; a static-only deployment cannot save models.
 
 ## Check
 
@@ -27,9 +27,11 @@ Choose Model A or Model B, select an element to edit its properties, and use the
 
 Keyboard shortcuts: Delete or Backspace removes the selected element after confirmation; Ctrl/⌘ Z undoes, Ctrl/⌘ Shift Z or Ctrl Y redoes, and Ctrl/⌘ S saves Model A or B to its authoritative file. Escape cancels connection mode and closes mobile panels. Arrow keys move a focused node by 10 units (Shift: 1 unit). Deletion and model undo/redo shortcuts leave text fields and other editable controls to their native keyboard behavior.
 
-Import and export use BPMN XML with BPMN Diagram Interchange coordinates. Legacy Camunda extensions are converted to the FIPU namespace on import. Unsupported executable elements are reported and block validated export; they are not silently discarded. Model B's employer-agreement branch ends with its own End Event while the student workflow continues independently.
+Import and export use BPMN XML with BPMN Diagram Interchange coordinates. Imports reject Camunda execution extensions. Unsupported executable elements are reported and block validated export; they are not silently discarded. Model B's employer-agreement branch ends with its own End Event while the student workflow continues independently.
 
 Use **Spremi** to write Model A or B to its authoritative `.bpmn` file, including pending inspector edits. Studio and MCP share validation, revision checks, a per-file lock and atomic replacement. A concurrent agent/editor change rejects a stale save instead of overwriting it. Invalid JSON or BPMN validation errors block saving. New engine instances read the new source; already-running instances keep their in-memory graph.
+
+Open **Povijest verzija** for Model A or B to see its archived versions, newest first. Each link opens a read-only diagram in a new tab, leaving the editor and unsaved changes in place. A changed save through Studio or MCP keeps the previous definition in `models/history/<filename>.<version>.xml`; an unchanged save adds no version. History lists existing snapshots only. Direct file edits and browser-only imports do not create snapshots. Back up `models/history/` along with the current files.
 
 Switching models, importing, or refreshing with F5 / Ctrl/⌘ R opens a Reka dialog for unsaved changes: save and continue, discard, or cancel. Browser toolbar refresh and closing use the native browser warning. Browser storage is only crash recovery: it never becomes the source of truth for A/B. Clean recovery copies are replaced by a newer source; conflicting unsaved drafts require explicit recovery and cannot overwrite a newer file without reloading/reviewing it. Export can rescue a conflicting draft.
 
@@ -41,11 +43,11 @@ The authoring endpoint accepts only A/B filenames, validates XML server-side, re
 
 The local MCP server exposes model inspection, connector guidance, validation, and batch editing of tasks, forms, Sequence Flows and layout. It edits actual `.bpmn`/`.xml` files in a directory you choose. It uses the same XML toolkit and validation as Studio, and can run without the browser app or Docker.
 
-After `npm ci`, start it through your MCP client using `node /absolute/path/to/fipu-bpmn-studio/mcp/server.mjs --models-dir /absolute/path/to/models`. Edits preview by default; saving requires an explicit flag and the revision returned when the agent read the model. See [MCP setup and workflow](docs/mcp.md) for Codex and Claude Code commands, examples, and the Praksa source/snapshot workflow.
+After `npm ci`, start it through your MCP client using `node /absolute/path/to/fipu-internship-bpmn-studio/mcp/server.mjs --models-dir /absolute/path/to/models`. Edits preview by default; saving requires an explicit flag and the revision returned when the agent read the model. See [MCP setup and workflow](docs/mcp.md) for Codex and Claude Code commands, examples, and the Praksa source/snapshot workflow.
 
 ## Single model source
 
-Only `python-bpmn-engine/models/strucna_praksa_A.bpmn` and `strucna_praksa_B.bpmn` are authoritative. Studio's local `/api/models/<filename>` reads/writes that directory; MCP is configured with the same directory. The dashboard reads the engine's `GET /model/<filename>` endpoint. No model files are bundled in either browser app.
+Only `fipu-internship-bpmn-engine/models/strucna_praksa_A.bpmn` and `strucna_praksa_B.bpmn` are authoritative. Studio's local `/api/models/<filename>` reads/writes that directory; MCP is configured with the same directory. The dashboard reads the engine's `GET /model/<filename>` endpoint. No model files are bundled in either browser app.
 
 `make bpmn-check` checks that exactly A/B exist, no UI model copies remain, and connector/renderer snapshots match. `make bpmn-sync` only copies the connector catalog and shared renderer, never models. Run local workflow tests after graph/connector changes. Task/form IDs still require dashboard compatibility. Restart recovery uses current model files, so graph changes affecting existing instances still require compatibility review; this change adds no instance migration or production rollout.
 
@@ -57,7 +59,7 @@ Tests read A/B from the same directory (override `BPMN_MODELS_DIR` when needed).
 - `packages/bpmn/`: XML toolkit using standard DOM APIs, and reusable Vue SVG renderer.
 - `mcp/`: local stdio MCP server for editing model files with agents.
 - `model-api.mjs`, `model-store.mjs`: local authoring API and file store shared with MCP.
-- `public/connectors.json`: connector metadata from `internship-application-services/bpmn/connectors.json`, with no credentials or server URLs.
+- `public/connectors.json`: connector metadata from `fipu-internship-services/bpmn/connectors.json`, with no credentials or server URLs.
 - `docs/bpmn-profile.md`: supported execution profile and compatibility rules.
 
 The standard notation and interchange vocabulary are defined by [OMG BPMN 2.0.2](https://www.omg.org/spec/BPMN/2.0.2/). This application implements the documented Praksa subset; it does not claim full BPMN conformance.

@@ -24,12 +24,33 @@ const selectTask = text => page.getByRole('button', { name: `${text} Service Tas
 const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem('fipu-bpmn-studio:v1:A')));
 
 try {
+  const linked = await context.newPage();
+  await linked.route('**/api/models/strucna_praksa_B.bpmn', async route => route.fulfill({ json: { xml: await modelXml('B'), version: 2, revision: 'a'.repeat(64) } }));
+  await linked.goto(origin + '/admin/model/strucna_praksa_B/2');
+  await expect(linked.getByRole('heading', { name: 'Stručna praksa · Model B · v2', exact: true })).toBeVisible();
+  await linked.route('**/api/models/strucna_praksa_B.bpmn/1', route => route.fulfill({ status: 404, json: { error: 'Version unavailable.' } }));
+  await linked.goto(origin + '/admin/model/strucna_praksa_B/1');
+  await expect(linked.getByRole('alert')).toContainText('Trenutno je objavljena verzija v2');
+  await linked.evaluate(() => localStorage.removeItem('fipu-bpmn-studio:active'));
+  await linked.close();
   await page.goto(origin);
   await expect(page.locator('.bpmn-node')).toHaveCount(35);
   await expect(save).toBeDisabled();
   await selectTask('Spremanje preferencija u baserow');
   await name.fill('Spremljeno tipkovnicom');
   await expect(page.locator('.draft-status')).toHaveText('Nespremljene izmjene');
+  await context.route('**/api/models/strucna_praksa_A.bpmn/history', route => route.fulfill({ json: { versions: [1] } }));
+  await context.route('**/api/models/strucna_praksa_A.bpmn/1', async route => route.fulfill({ json: { xml: (await modelXml('A')).replace('Spremanje preferencija u baserow', 'Arhivirani zadatak') } }));
+  await page.getByRole('button', { name: 'Povijest verzija' }).click();
+  const [archive] = await Promise.all([context.waitForEvent('page'), page.getByRole('link', { name: 'Verzija 1' }).click()]);
+  await expect(archive.getByText('Samo za čitanje')).toBeVisible();
+  await expect(archive.getByRole('button', { name: 'serviceTask: Arhivirani zadatak', exact: true })).toBeVisible();
+  await expect(archive.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0);
+  await archive.getByRole('link', { name: 'Aktualni model' }).click();
+  await expect(archive.getByRole('tab', { name: 'Model A Dodjela zadatka' })).toHaveAttribute('aria-selected', 'true');
+  await archive.close();
+  await page.keyboard.press('Escape');
+  await expect(name).toHaveValue('Spremljeno tipkovnicom');
   await name.press('Control+s');
   await expect(save).toBeDisabled();
   assert((await draft()).savedXml.includes('Spremljeno tipkovnicom'));

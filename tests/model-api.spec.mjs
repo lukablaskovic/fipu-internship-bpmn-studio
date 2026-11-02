@@ -22,6 +22,8 @@ test('Studio and MCP share two files, validation, revision guards and atomic wri
   const put = (xml, expectedRevision, extra = {}) => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Praksa-Editor': '1', ...extra }, body: JSON.stringify({ xml, expectedRevision }) });
   try {
     const initial = await (await fetch(url)).json();
+    const list = async (historyUrl = url + '/history') => (await (await fetch(historyUrl)).json()).versions;
+    assert.deepEqual(await list(), []);
     assert.equal(initial.xml, xml);
     assert.equal(initial.version >= 1, true);
     const changed = xml.replace('name="Spremanje preferencija u baserow"', 'name="Provjera zajedničkog izvora"');
@@ -32,6 +34,13 @@ test('Studio and MCP share two files, validation, revision guards and atomic wri
     assert.ok(stored.xml.includes('Provjera zajedničkog izvora'));
     assert.deepEqual(await (await put(changed, stored.revision)).json(), { version: stored.version, revision: stored.revision });
     assert.equal(await readFile(join(directory, file), 'utf8'), stored.xml);
+    const archiveUrl = url + '/' + initial.version;
+    assert.equal((await (await fetch(archiveUrl)).json()).xml, xml);
+    assert.equal((await fetch(archiveUrl, { method: 'PUT' })).status, 405);
+    assert.deepEqual(await list(), [initial.version]);
+    assert.deepEqual(await list(origin + '/api/models/strucna_praksa_B.bpmn/history'), []);
+    assert.equal((await fetch(url + '/history', { method: 'PUT' })).status, 405);
+    assert.equal((await fetch(url + '/history', { headers: { Origin: 'https://untrusted.example' } })).status, 403);
     const store = createModelStore(directory);
     assert.equal(store.readFile(file).xml, stored.xml);
     assert.equal((await put(xml, initial.revision)).status, 409);
@@ -44,12 +53,18 @@ test('Studio and MCP share two files, validation, revision guards and atomic wri
     assert.equal((await fetch(`${origin}/api/models/extra.bpmn`)).status, 404);
     assert.equal((await fetch(`${origin}/api/models/%2e%2e%2foutside.bpmn`)).status, 404);
     assert.equal(await readFile(join(directory, file), 'utf8'), stored.xml);
-    store.save(file, current.revision, xml);
-    assert.equal((await (await fetch(url)).json()).xml, xml, 'Studio reads an MCP-style save immediately');
+    const next = stored.xml.replace('processVersion="' + stored.version + '"', 'processVersion="' + (stored.version + 1) + '"');
+    store.save(file, current.revision, next);
+    assert.equal((await (await fetch(url)).json()).xml, next, 'Studio reads an MCP-style save immediately');
+    assert.deepEqual(await list(), [stored.version, initial.version]);
+    await rm(join(directory, 'history'), { recursive: true });
+    await symlink(directory, join(directory, 'history'));
+    assert.equal((await fetch(url + '/history')).status, 400);
+    assert.equal((await fetch(archiveUrl)).status, 400);
     await rm(join(directory, file));
     await symlink(join(directory, 'strucna_praksa_B.bpmn'), join(directory, file));
     assert.equal((await fetch(url)).status, 400);
-    assert.deepEqual((await readdir(directory)).sort(), ['strucna_praksa_A.bpmn', 'strucna_praksa_B.bpmn']);
+    assert.deepEqual((await readdir(directory)).sort(), ['history', 'strucna_praksa_A.bpmn', 'strucna_praksa_B.bpmn']);
   } finally {
     await new Promise(resolve => server.close(resolve));
     await rm(directory, { recursive: true, force: true });
