@@ -71,7 +71,7 @@ function readModel(document) {
       ...basic(element), ...geometry(element), laneId: laneIds.get(attr(element, 'id')) || '',
       documentation: text(element, NS.bpmn, 'documentation'),
       default: attr(element, 'default'),
-      timerDuration: child(element, NS.bpmn, 'timerEventDefinition') ? text(child(element, NS.bpmn, 'timerEventDefinition'), NS.bpmn, 'timeDuration') : null,
+      timerDuration: child(element, NS.bpmn, 'timerEventDefinition') ? text(child(element, NS.bpmn, 'timerEventDefinition'), NS.bpmn, 'timeDuration').trim() : null,
       terminate: !!child(element, NS.bpmn, 'terminateEventDefinition'),
       outcome: element.getAttributeNS(NS.fipu, 'outcome') || 'finished',
       inputs: readParameters(extension, 'input'), outputs: readParameters(extension, 'output'),
@@ -276,9 +276,71 @@ function route(source, target) {
   const leftToRight = source.x <= target.x;
   const a = { x: source.x + (leftToRight ? source.width : 0), y: source.y + source.height / 2 };
   const b = { x: target.x + (leftToRight ? 0 : target.width), y: target.y + target.height / 2 };
+  const fromGateway = source.type.endsWith('Gateway'), toGateway = target.type.endsWith('Gateway');
+  if ((fromGateway || toGateway) && (source.y + source.height <= target.y || target.y + target.height <= source.y)) {
+    const down = source.y < target.y;
+    const start = { x: source.x + source.width / 2, y: source.y + (down ? source.height : 0) };
+    const end = { x: target.x + target.width / 2, y: target.y + (down ? 0 : target.height) };
+    if (source.x + source.width <= target.x || target.x + target.width <= source.x) {
+      return fromGateway ? [start, { x: start.x, y: b.y }, b] : [a, { x: end.x, y: a.y }, end];
+    }
+    if (start.x === end.x) return [start, end];
+    const y = (start.y + end.y) / 2;
+    return [start, { x: start.x, y }, { x: end.x, y }, end];
+  }
   if (a.y === b.y) return [a, b];
   const middle = (a.x + b.x) / 2;
   return [a, { x: middle, y: a.y }, { x: middle, y: b.y }, b];
+}
+
+export function portsForGateway(node, ref) {
+  return [['gore', 0, -1], ['desno', 1, 0], ['dolje', 0, 1], ['lijevo', -1, 0]].map(([side, dx, dy]) => ({
+      ref, side, dx, dy, node, x: node.x + node.width * (1 + dx) / 2, y: node.y + node.height * (1 + dy) / 2,
+    }));
+}
+
+export function gatewayRoute(port, waypoints) {
+  const incoming = port.ref === 'targetRef';
+  const points = [...waypoints];
+  if (incoming) points.reverse();
+  const tip = { x: port.x, y: port.y };
+  if (points.length < 2 || (tip.x === points[0].x && tip.y === points[0].y)) return waypoints;
+  // Replace bends inside the gateway margin and keep the route beyond its first exit.
+  const { x, y, width, height } = port.node;
+  const left = x - 12, right = x + width + 12, top = y - 12, bottom = y + height + 12;
+  const outside = points.findIndex((p, i) => i > 0 && (p.x < left || p.x > right || p.y < top || p.y > bottom));
+  const lead = { x: tip.x + port.dx * 12, y: tip.y + port.dy * 12 };
+  const path = [tip, lead];
+  if (outside < 0) {
+    path.push(points.at(-1));
+  } else {
+    const a = points[outside - 1], b = points[outside];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const tx = dx ? ((dx > 0 ? right : left) - a.x) / dx : Infinity;
+    const ty = dy ? ((dy > 0 ? bottom : top) - a.y) / dy : Infinity;
+    const exitSide = tx < ty ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+    const t = Math.min(tx, ty);
+    const exit = { x: a.x + dx * t, y: a.y + dy * t };
+    const startSide = port.dy < 0 ? 0 : port.dx > 0 ? 1 : port.dy > 0 ? 2 : 3;
+    const corners = [{ x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }, { x: left, y: top }];
+    const clockwise = (exitSide - startSide + 4) % 4;
+    const forward = clockwise === 1 || (clockwise === 2 && (port.dx ? port.dx * (exit.y - tip.y) : -port.dy * (exit.x - tip.x)) >= 0);
+    for (let side = startSide; side !== exitSide;) {
+      const previous = (side + 3) % 4;
+      path.push(corners[forward ? side : previous]);
+      side = forward ? (side + 1) % 4 : previous;
+    }
+    path.push(exit, ...points.slice(outside));
+  }
+  const route = path.filter((p, i) => !i || p.x !== path[i-1].x || p.y !== path[i-1].y);
+  return incoming ? route.reverse() : route;
+}
+export function newFlowRoute(source, target, sourceSide) {
+  const points = route(source, target);
+  if (!sourceSide) return points;
+  const port = portsForGateway(source, 'sourceRef').find(p => p.side === sourceSide);
+  if (!source.type.endsWith('Gateway') || !port) throw new Error('Invalid gateway tip.');
+  return gatewayRoute(port, points);
 }
 
 function writeWaypoints(edge, points) {
@@ -411,7 +473,7 @@ export function addFlow(model, sourceId, targetId, options = {}) {
   const targetElement = elementById(next, targetId);
   targetElement.insertBefore(create(next.document, 'bpmn', 'incoming', {}, id), child(targetElement, NS.bpmn, 'outgoing') || null);
   const edge = create(next.document, 'bpmndi', 'BPMNEdge', { id: `${id}_di`, bpmnElement: id });
-  writeWaypoints(edge, route(source, target));
+  writeWaypoints(edge, newFlowRoute(source, target, options.sourceSide));
   plane(next).append(edge);
   return options.condition ? updateElement(readModel(next.document), id, { condition: options.condition }) : readModel(next.document);
 }
@@ -428,6 +490,11 @@ export function removeElement(model, id) {
   return readModel(next.document);
 }
 
+const eventParents = {
+  timerEventDefinition: 'intermediateCatchEvent', messageEventDefinition: 'intermediateCatchEvent',
+  terminateEventDefinition: 'endEvent', timeDuration: 'timerEventDefinition',
+};
+
 export function validateModel(model, connectors) {
   const issues = [];
   const report = (message, id = '', severity = 'error') => issues.push({ severity, id, message });
@@ -442,6 +509,13 @@ export function validateModel(model, connectors) {
       ids.add(id);
     }
     if (element.namespaceURI === NS.bpmn && !BPMN_ELEMENTS.has(element.localName)) report(`Unsupported BPMN element: ${element.localName}. It is preserved but cannot be exported for execution.`, id);
+    if (Object.hasOwn(eventParents, element.localName)) {
+      const parent = element.parentElement;
+      const owner = attr(parent?.closest('[id]'), 'id');
+      if (element.namespaceURI !== NS.bpmn || parent?.namespaceURI !== NS.bpmn || parent.localName !== eventParents[element.localName]) report(`Invalid namespace or parent for ${element.localName}.`, owner);
+      if (element.localName !== 'timerEventDefinition' && element.children.length) report(`${element.localName} cannot contain nested elements.`, owner);
+      if (element.localName === 'messageEventDefinition' && element.hasAttribute('messageRef')) report('Message delivery uses the instance and event ID; messageRef correlation is unsupported.', owner);
+    }
     if (element.namespaceURI === NS.fipu && !EXT_ELEMENTS.has(element.localName)) report(`Unsupported execution extension: ${element.localName}.`, attr(element.closest?.('[id]'), 'id'));
     if (element.namespaceURI === NS.bpmn && element.localName === 'process' && attr(element, 'isExecutable') !== 'true') report('The Process must be executable.', id);
     for (const attribute of Array.from(element.attributes)) {

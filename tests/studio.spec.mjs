@@ -62,7 +62,11 @@ try {
   await expect(nameEditor).toBeFocused();
   const allSelected = () => nameEditor.evaluate(el => el.selectionStart === 0 && el.selectionEnd === el.value.length);
   assert(await allSelected());
-  await nameEditor.dblclick();
+  await nameEditor.fill('Spremanje preferencija\nu baserow');
+  const position = { x: 24, y: 18 };
+  await nameEditor.dblclick({ position });
+  assert.equal(await nameEditor.evaluate(el => el.value.slice(el.selectionStart, el.selectionEnd)), 'Spremanje');
+  await nameEditor.click({ position, clickCount: 3 });
   assert(await allSelected());
   await page.keyboard.type('Novi naziv');
   await expect(nameEditor).toHaveValue('Novi naziv');
@@ -137,6 +141,52 @@ try {
   await page.keyboard.press('Control+y');
   await expect(page.locator('.bpmn-node')).toHaveCount(34);
   await page.keyboard.press('Control+z');
+  await page.getByRole('button', { name: 'Prikaži cijeli model', exact: true }).click();
+  const gateway = page.locator('.bpmn-node[aria-label*="Student prihvaćen"]');
+  const destination = page.locator('.bpmn-node[aria-label="userTask: Ispunjavanje prijavnice"]');
+  for (const side of ['gore', 'desno', 'dolje', 'lijevo']) {
+    await gateway.press('Enter');
+    const tip = page.getByRole('button', { name: `Nova veza: ${side}`, exact: true });
+    const xy = (await tip.getAttribute('transform')).match(/translate\(([^)]+)\)/)[1].replace(' ', ',');
+    const start = await tip.boundingBox(), end = await destination.boundingBox();
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 5 });
+    await expect(page.locator('.bpmn-flow')).toHaveCount(flowCount);
+    await page.mouse.up();
+    await expect(page.locator('.bpmn-flow')).toHaveCount(flowCount + 1);
+    await expect(page.locator('.bpmn-flow').last().locator('polyline').first()).toHaveAttribute('points', new RegExp('^' + xy + ' '));
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.bpmn-flow')).toHaveCount(flowCount);
+  }
+  for (const [id, endpoint, index] of [['Flow_0rr5pyh', 'početak', 0], ['Flow_1g3f3ei', 'kraj', -1]]) {
+    const edge = page.locator(`[data-flow-id="${id}"]`);
+    await edge.press('Enter');
+    await page.getByRole('button', { name: 'Prikaži cijeli model', exact: true }).click();
+    const routes = new Map();
+    for (const side of ['desno', 'dolje', 'lijevo', 'gore', 'desno', 'dolje']) {
+      const port = page.getByRole('button', { name: `Spoji ${endpoint} veze: ${side}`, exact: true });
+      const xy = (await port.getAttribute('transform')).match(/translate\(([^)]+)\)/)[1].replace(' ', ',');
+      if (routes.has(side)) {
+        if (side === 'dolje') await page.getByRole('button', { name: 'Uvećaj', exact: true }).click();
+        const old = page.getByRole('button', { name: `Spoji ${endpoint} veze: ${side === 'dolje' ? 'desno' : 'gore'}`, exact: true });
+        const segment = page.getByRole('button', { name: /^Pomakni segment / });
+        const from = side === 'dolje' ? (index === 0 ? segment.first() : segment.last()) : old;
+        const start = await from.boundingBox(), end = await port.boundingBox();
+        await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2 + (side === 'dolje' ? end.height / 2 : 0), { steps: 5 });
+        await expect.poll(async () => (await edge.locator('polyline').first().getAttribute('points')).split(' ').at(index)).toBe(xy);
+        await page.mouse.up();
+      }
+      else await port.press('Enter');
+      await expect.poll(async () => (await edge.locator('polyline').first().getAttribute('points')).split(' ').at(index)).toBe(xy);
+      const route = await edge.locator('polyline').first().getAttribute('points');
+      if (routes.has(side)) assert.equal(route, routes.get(side));
+      routes.set(side, route);
+    }
+  }
+  await page.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
   const flow = page.locator('.bpmn-flow').first();
   await flow.focus();
   await flow.press('Enter');
@@ -146,13 +196,29 @@ try {
   const box = await handle.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 18, { steps: 4 });
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 90, { steps: 4 });
   await page.mouse.up();
   await expect(line).not.toHaveAttribute('points', originalRoute);
   const route = (await line.getAttribute('points')).split(' ');
   assert.equal(route[0], originalRoute.split(' ')[0]);
   assert.equal(route.at(-1), originalRoute.split(' ').at(-1));
   assert.equal(Number(route[2].split(',')[1]) % 10, 0);
+  const remaining = [...route];
+  const bend = page.getByRole('button', { name: 'Pomakni zavoj 2', exact: true });
+  await bend.press('Delete');
+  remaining.splice(1, 1);
+  await expect(line).toHaveAttribute('points', remaining.join(' '));
+  await handle.focus();
+  while (remaining.length > 2) {
+    await page.keyboard.press('Delete');
+    remaining.splice(1, 1);
+    await expect(line).toHaveAttribute('points', remaining.join(' '));
+  }
+  await page.keyboard.press('Delete');
+  await expect(line).toHaveAttribute('points', remaining.join(' '));
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  for (let i = 2; i < route.length; i++) await page.keyboard.press('Control+z');
+  await expect(line).toHaveAttribute('points', route.join(' '));
   await page.keyboard.press('Control+z');
   await expect(line).toHaveAttribute('points', originalRoute);
   await flow.press('Backspace');

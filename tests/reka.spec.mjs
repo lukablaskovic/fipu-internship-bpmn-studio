@@ -86,9 +86,12 @@ try {
   await page.keyboard.press('Escape');
   await expect(connect).toHaveAttribute('aria-pressed', 'false');
   await checkCamera();
+  const source = page.locator('.bpmn-node[aria-label^="serviceTask:"]').first();
+  await source.press('Enter');
   await connect.click();
   const oldFlowCount = await page.locator('.bpmn-flow').count();
-  await page.locator('.bpmn-node[aria-label^="serviceTask:"]').first().press('Enter');
+  await source.press('Enter');
+  await expect(connect).toHaveAttribute('aria-pressed', 'true');
   await checkCamera();
   await page.locator('.bpmn-node[aria-label^="endEvent:"]').first().press('Enter');
   await expect(page.locator('.bpmn-flow')).toHaveCount(oldFlowCount + 1);

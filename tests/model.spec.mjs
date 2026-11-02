@@ -21,6 +21,13 @@ try {
     const outcomes = [];
     for (const { name, xml } of models) {
       const model = parseModel(xml);
+      const certificateGateway = model.nodes.find(node => node.id === 'Gateway_1b8kjb9');
+      if (certificateGateway) {
+        const flow = model.flows.find(f => f.sourceRef === certificateGateway.id && f.targetRef === 'slanje_potvrde_student_email');
+        const recreated = addFlow(removeElement(model, flow.id), certificateGateway.id, flow.targetRef);
+        const [tip, bend, end] = recreated.flows.at(-1).waypoints;
+        check(tip.x === certificateGateway.x + certificateGateway.width / 2 && tip.y === certificateGateway.y && bend.x === tip.x && bend.y === end.y, 'Certificate branch leaves the top tip and reaches the email task horizontally');
+      }
       const exported = serializeModel(model);
       check(!exported.includes('camunda.org'), `${name}: legacy namespace removed`);
       check(signatures(model) === signatures(parseModel(exported)), `${name}: model semantic and DI round trip`);
@@ -52,6 +59,18 @@ try {
       check(events.nodes.find(n => n.id === 'test_timer').timerDuration === 'P2D', 'Timer duration survives editing and export');
       check(events.nodes.some(n => n.id === 'test_throw' && n.type === 'intermediateThrowEvent'), 'None throw survives export');
       throws(() => updateElement(withTimer, 'test_timer', { timerDuration: 'tomorrow' }), 'Invalid timers cannot be saved');
+      const catchId = 'odustajanje_od_prakse';
+      const asTimer = updateElement(model, catchId, { variant: 'timerCatch', timerDuration: 'PT20S' });
+      for (const candidate of [model, asTimer, updateElement(asTimer, catchId, { variant: 'intermediateThrowEvent' })]) {
+        check(!validateModel(candidate, catalog.connectors).some(issue => issue.severity === 'error'), 'Connected message, timer and none throw variants pass validation');
+      }
+      const timerXml = serializeModel(asTimer);
+      for (const invalid of [
+        timerXml.replaceAll('bpmn:timerEventDefinition', 'foreign:timerEventDefinition').replace('<foreign:timerEventDefinition', '<foreign:timerEventDefinition xmlns:foreign="urn:foreign"'),
+        timerXml.replace('PT20S', '<bpmn:timeDuration>PT20S</bpmn:timeDuration>'),
+        exported.replace('<bpmn:messageEventDefinition', '<bpmn:messageEventDefinition messageRef="ignored"'),
+        timerXml.replace('PT20S', 'PT0S'),
+      ]) check(validateModel(parseModel(invalid)).some(issue => issue.severity === 'error'), 'Reject malformed or unsupported imported event definitions');
       const errors = validateModel(model, catalog.connectors).filter(issue => issue.severity === 'error');
       check(errors.length === 0, `${name}: template validation: ${JSON.stringify(errors)}`);
       const taskToResize = model.nodes.find(node => node.type === 'serviceTask' && model.flows.some(flow => flow.targetRef === node.id));
