@@ -34,6 +34,7 @@ const history = ref([]);
 const future = ref([]);
 const exportedXml = ref('');
 const savedXml = ref('');
+const processVersion = ref(null);
 const sourceRevision = ref('');
 const saving = ref(false);
 const draftStored = ref(true);
@@ -89,6 +90,7 @@ async function saveModel() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Spremanje modela nije uspjelo.');
       sourceRevision.value = result.revision;
+      processVersion.value = result.version;
     } else if (!persist(xml)) return false;
     savedXml.value = xml;
     persist(); error.value = '';
@@ -206,12 +208,13 @@ async function loadModel(key) {
   try {
     const response = await fetch(`/api/models/strucna_praksa_${key}.bpmn`, { cache: 'no-store' });
     if (!response.ok) throw new Error('Model nije dostupan. Provjerite BPMN_MODELS_DIR na Studio poslužitelju.');
-    const { xml, revision } = await response.json();
+    const { xml, revision, version: savedVersion } = await response.json();
     if (version !== loadVersion) return;
     const original = parseModel(xml);
     activeModel.value = key; importedName.value = '';
     exportedXml.value = serializeModel(original);
     sourceRevision.value = revision;
+    processVersion.value = savedVersion;
     savedXml.value = exportedXml.value;
     let draft;
     try { draft = JSON.parse(readDraft(storageKey()) || 'null'); }
@@ -373,7 +376,7 @@ onBeforeUnmount(() => { media.removeEventListener('change', resizeWorkspace); wi
         <div class="element-list"><StudioButton v-for="node in filteredNodes" :key="node.id" :class="{ active: selectedId === node.id }" @click="selectFromList(node.id)"><span class="node-dot" :class="node.type"></span><span>{{ node.name || node.id }}<small>{{ typeName(node.type) }}</small></span></StudioButton><p v-if="model && !filteredNodes.length" class="empty-search">Nema pronađenih elemenata.</p></div>
       </StudioPanel>
       <main class="canvas-panel" aria-label="Radna površina">
-        <PopoverRoot v-model:open="showIssues"><ToolbarRoot class="canvas-toolbar" aria-label="Uređivanje modela"><div class="toolbar-group"><div class="canvas-title"><h1>{{ activeModel === 'import' ? importedName.replace(/\.(xml|bpmn)$/i, '') : `Stručna praksa · Model ${activeModel}` }}</h1></div><ToolbarButton v-if="compact" as-child><StudioButton ref="libraryOpener" class="icon-button mobile-only" aria-label="Otvori elemente" :aria-expanded="paletteVisible" @click="toggleLibrary"><Icon name="menu" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!history.length"><StudioButton class="icon-button" :disabled="!history.length" aria-label="Poništi izmjenu" title="Poništi (Ctrl/⌘ Z)" @click="undo"><Icon name="undo" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!future.length"><StudioButton class="icon-button" :disabled="!future.length" aria-label="Ponovi izmjenu" title="Ponovi (Ctrl/⌘ Shift Z)" @click="redo"><Icon name="redo" /></StudioButton></ToolbarButton><ToolbarSeparator class="toolbar-divider" /><ToolbarButton as-child><Toggle :model-value="connecting" :disabled="!model" @update:model-value="connect" as-child><StudioButton :class="{ pressed: connecting }"><Icon name="link" /><span>Poveži</span></StudioButton></Toggle></ToolbarButton></div><PopoverTrigger as-child><ToolbarButton as-child><StudioButton class="validate-button" :class="{ 'has-errors': errors.length }" :disabled="!model" ><Icon :name="errors.length ? 'info' : 'check'" /><span>Provjeri model</span><span v-if="errors.length" class="count">{{ errors.length }}</span></StudioButton></ToolbarButton></PopoverTrigger></ToolbarRoot><PopoverPortal><PopoverContent side="bottom" align="end" :side-offset="8" class="validation-panel"><div class="panel-heading"><h2>{{ errors.length ? `${errors.length} pogrešaka u modelu` : 'Provjera modela' }}</h2><PopoverClose as-child><StudioButton class="icon-button" aria-label="Zatvori provjeru"><Icon name="close" /></StudioButton></PopoverClose></div><p v-if="!issues.length" class="valid-result"><Icon name="check" /> Model je spreman za izvoz.</p><ul v-if="issues.length"><li v-for="(issue, index) in issues" :key="index" :class="issue.severity"><StudioButton @click="issue.id && selectFromList(issue.id)"><b>{{ issue.severity === 'error' ? 'Pogreška' : 'Napomena' }}</b> {{ issue.message }}<code v-if="issue.id">{{ issue.id }}</code></StudioButton></li></ul></PopoverContent></PopoverPortal></PopoverRoot>
+        <PopoverRoot v-model:open="showIssues"><ToolbarRoot class="canvas-toolbar" aria-label="Uređivanje modela"><div class="toolbar-group"><div class="canvas-title"><h1>{{ activeModel === 'import' ? importedName.replace(/\.(xml|bpmn)$/i, '') : `Stručna praksa · Model ${activeModel}${processVersion ? ` · v${processVersion}` : ''}` }}</h1></div><ToolbarButton v-if="compact" as-child><StudioButton ref="libraryOpener" class="icon-button mobile-only" aria-label="Otvori elemente" :aria-expanded="paletteVisible" @click="toggleLibrary"><Icon name="menu" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!history.length"><StudioButton class="icon-button" :disabled="!history.length" aria-label="Poništi izmjenu" title="Poništi (Ctrl/⌘ Z)" @click="undo"><Icon name="undo" /></StudioButton></ToolbarButton><ToolbarButton as-child :disabled="!future.length"><StudioButton class="icon-button" :disabled="!future.length" aria-label="Ponovi izmjenu" title="Ponovi (Ctrl/⌘ Shift Z)" @click="redo"><Icon name="redo" /></StudioButton></ToolbarButton><ToolbarSeparator class="toolbar-divider" /><ToolbarButton as-child><Toggle :model-value="connecting" :disabled="!model" @update:model-value="connect" as-child><StudioButton :class="{ pressed: connecting }"><Icon name="link" /><span>Poveži</span></StudioButton></Toggle></ToolbarButton></div><PopoverTrigger as-child><ToolbarButton as-child><StudioButton class="validate-button" :class="{ 'has-errors': errors.length }" :disabled="!model" ><Icon :name="errors.length ? 'info' : 'check'" /><span>Provjeri model</span><span v-if="errors.length" class="count">{{ errors.length }}</span></StudioButton></ToolbarButton></PopoverTrigger></ToolbarRoot><PopoverPortal><PopoverContent side="bottom" align="end" :side-offset="8" class="validation-panel"><div class="panel-heading"><h2>{{ errors.length ? `${errors.length} pogrešaka u modelu` : 'Provjera modela' }}</h2><PopoverClose as-child><StudioButton class="icon-button" aria-label="Zatvori provjeru"><Icon name="close" /></StudioButton></PopoverClose></div><p v-if="!issues.length" class="valid-result"><Icon name="check" /> Model je spreman za izvoz.</p><ul v-if="issues.length"><li v-for="(issue, index) in issues" :key="index" :class="issue.severity"><StudioButton @click="issue.id && selectFromList(issue.id)"><b>{{ issue.severity === 'error' ? 'Pogreška' : 'Napomena' }}</b> {{ issue.message }}<code v-if="issue.id">{{ issue.id }}</code></StudioButton></li></ul></PopoverContent></PopoverPortal></PopoverRoot>
         <div v-if="loading" class="canvas-empty" role="status">Učitavanje modela…</div>
         <BpmnDiagram v-else-if="model" ref="diagram" :model="model" :selected-id="selectedId" editable :connecting="connecting" @select="select" @move="moveNode" @background="async () => { if (!connecting && await leaveInspector()) selectedId = ''; }" />
         <div v-else class="canvas-empty">Model nije učitan.<StudioButton @click="loadModel('A')">Pokušaj ponovno</StudioButton></div>

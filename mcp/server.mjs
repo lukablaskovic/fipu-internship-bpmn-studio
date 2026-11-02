@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
-import { createModelStore, revision } from '../model-store.mjs';
+import { createModelStore, nextDefinition, revision } from '../model-store.mjs';
 import { parseArgs } from 'node:util';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JSDOM } from 'jsdom';
 import { z } from 'zod';
-import { NODE_TYPES, parseModel, serializeModel, validateModel, updateElement, moveElement, addNode, addFlow, removeElement } from '../packages/bpmn/model.js';
+import { NODE_TYPES, parseModel, validateModel, updateElement, moveElement, addNode, addFlow, removeElement } from '../packages/bpmn/model.js';
 
 const { values } = parseArgs({ options: { 'models-dir': { type: 'string' }, help: { type: 'boolean' } } });
 if (values.help || !values['models-dir']) {
@@ -129,7 +129,7 @@ server.registerTool('bpmn_edit_model', {
   if (current.revision !== expectedRevision) throw new Error('Model changed since it was read. Read it again and review a new preview.');
   const before = parseModel(current.xml);
   const candidate = apply(before, operations);
-  const xml = serializeModel(candidate);
+  const { xml } = nextDefinition(current.xml, candidate);
   if (Buffer.byteLength(xml) > 2_000_000) throw new Error('Resulting BPMN file exceeds 2 MB.');
   const after = parseModel(xml);
   const issues = validateModel(after, catalog);

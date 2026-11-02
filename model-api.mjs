@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { createModelStore, revision } from './model-store.mjs';
+import { createModelStore, nextDefinition, processVersion, revision } from './model-store.mjs';
 import { parseModel, validateModel } from './packages/bpmn/model.js';
 
 const { window } = new JSDOM('');
@@ -23,7 +23,7 @@ export function modelApi(directory) {
       const store = createModelStore(directory);
       if (req.method === 'GET') {
         const { xml, revision } = store.readFile(file);
-        return reply(200, { xml, revision });
+        return reply(200, { xml, revision, version: processVersion(parseModel(xml)) });
       }
       if (req.method !== 'PUT') return reply(405, { error: 'Use GET or PUT.' });
       if (req.headers['x-praksa-editor'] !== '1' || !req.headers['content-type']?.startsWith('application/json')) return reply(403, { error: 'Expected a Studio JSON request.' });
@@ -36,11 +36,13 @@ export function modelApi(directory) {
       }
       const { xml, expectedRevision } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (typeof xml !== 'string' || Buffer.byteLength(xml) > 2_000_000 || !/^[a-f0-9]{64}$/.test(expectedRevision)) return reply(400, { error: 'Expected BPMN XML and the revision read from this model.' });
-      const issues = validateModel(parseModel(xml), catalog);
+      const candidate = parseModel(xml);
+      const issues = validateModel(candidate, catalog);
       if (issues.some(issue => issue.severity === 'error')) return reply(422, { error: 'Ispravite pogreške modela prije spremanja.', issues });
-      try { store.save(file, expectedRevision, xml); }
+      const next = nextDefinition(store.readFile(file).xml, candidate);
+      try { store.save(file, expectedRevision, next.xml); }
       catch (error) { if (/changed|lock/i.test(error.message)) return reply(409, { error: 'Model je izmijenjen izvan Studija. Izvezite svoju skicu i ponovno učitajte model prije spremanja.' }); throw error; }
-      return reply(200, { revision: revision(xml) });
+      return reply(200, { revision: revision(next.xml), version: next.version });
     } catch (error) { reply(error.code === 'ENOENT' ? 503 : 400, { error: error.code === 'ENOENT' ? 'Izvorni modeli nisu dostupni. Postavite BPMN_MODELS_DIR na direktorij enginea models/.' : error.message }); }
   };
 }

@@ -2,6 +2,26 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { parseModel, serializeModel } from './packages/bpmn/model.js';
+
+export function processVersion(model) {
+  const value = model.document.documentElement.getAttribute('processVersion');
+  if (value === null) return 1;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) throw new Error('Invalid process version.');
+  return number;
+}
+
+export function nextDefinition(currentXml, candidate) {
+  const current = parseModel(currentXml);
+  const version = processVersion(current);
+  current.document.documentElement.removeAttribute('processVersion');
+  candidate.document.documentElement.removeAttribute('processVersion');
+  if (serializeModel(current) === serializeModel(candidate)) return { xml: currentXml, version };
+  candidate.document.documentElement.setAttribute('processVersion', String(version + 1));
+  return { xml: serializeModel(candidate), version: version + 1 };
+}
+
 export const revision = xml => createHash('sha256').update(xml).digest('hex');
 export function createModelStore(root) {
   const directory = realpathSync(root);
