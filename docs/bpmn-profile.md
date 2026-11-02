@@ -32,7 +32,7 @@ Sequence Flow conditions retain the engine's `variable:value` string-equality sy
 
 Exclusive Gateways select the first matching outgoing flow and use the default only if none matches. Normal End Events consume their own token; other branches continue. Cycles that revisit a Parallel Gateway are rejected by Studio because the current engine does not reset join tokens for another iteration. The existing Model A rejection loop remains supported because it precedes its parallel gateways.
 
-The engine still reads legacy `http://camunda.org/schema/1.0/bpmn` extensions for compatibility. Studio emits FIPU extensions and removes Camunda modeler metadata. Optional legacy DI color annotations are retained as inert XML metadata; they are not a runtime dependency. Unknown XML metadata is preserved, while unsupported executable elements prevent validated export.
+The engine and Studio accept only the FIPU execution profile. Optional legacy DI color annotations are retained as inert XML metadata; they are not a runtime dependency. Unknown XML metadata is preserved, while unsupported executable elements prevent validated export.
 
 The editor's validation checks the supported structure and connector configuration; it does not prove the business process is sound, that every branch can complete, or that existing instances can safely use a changed graph. Review and run local workflow tests before release.
 
