@@ -28,6 +28,17 @@ try {
   await linked.route('**/api/models/strucna_praksa_B.bpmn', async route => route.fulfill({ json: { xml: await modelXml('B'), version: 2, revision: 'a'.repeat(64) } }));
   await linked.goto(origin + '/admin/model/strucna_praksa_B/2');
   await expect(linked.getByRole('heading', { name: 'Stručna praksa · Model B · v2', exact: true })).toBeVisible();
+  await linked.route('**/api/models/strucna_praksa_B.bpmn/1', async route => route.fulfill({ json: { xml: await modelXml('B') } }));
+  await linked.goto(origin + '/admin/model/strucna_praksa_B/1');
+  await expect(linked.getByText('Samo za čitanje')).toBeVisible();
+  const canvas = linked.locator('.fipu-bpmn-canvas');
+  const fitted = await canvas.getAttribute('viewBox');
+  const frame = await canvas.boundingBox();
+  await linked.mouse.move(frame.x + 4, frame.y + 4);
+  await linked.mouse.down();
+  await linked.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+  await linked.mouse.up();
+  await expect(canvas).toHaveAttribute('viewBox', fitted);
   await linked.route('**/api/models/strucna_praksa_B.bpmn/1', route => route.fulfill({ status: 404, json: { error: 'Version unavailable.' } }));
   await linked.goto(origin + '/admin/model/strucna_praksa_B/1');
   await expect(linked.getByRole('alert')).toContainText('Trenutno je objavljena verzija v2');
