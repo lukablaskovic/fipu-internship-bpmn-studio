@@ -66,10 +66,34 @@ try {
   await expect(page.getByRole('dialog', { name: 'Provjeri model' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Provjeri model' })).toBeFocused();
+  const canvas = page.locator('.fipu-bpmn-canvas');
+  const camera = () => canvas.evaluate(async svg => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const box = svg.viewBox.baseVal;
+    return [svg.getScreenCTM().a, box.x + box.width / 2, box.y + box.height / 2];
+  });
+  await page.getByRole('button', { name: 'Uvećaj', exact: true }).click();
+  await canvas.hover();
+  await page.mouse.wheel(52, -30);
+  const beforeConnect = await camera();
+  async function checkCamera() {
+    const after = await camera();
+    assert(after.every((n, i) => Math.abs(n - beforeConnect[i]) < 0.001), 'Connect preserves zoom and diagram center');
+  }
   await connect.click();
   await expect(connect).toHaveAttribute('aria-pressed', 'true');
+  await checkCamera();
   await page.keyboard.press('Escape');
   await expect(connect).toHaveAttribute('aria-pressed', 'false');
+  await checkCamera();
+  await connect.click();
+  const oldFlowCount = await page.locator('.bpmn-flow').count();
+  await page.locator('.bpmn-node[aria-label^="serviceTask:"]').first().press('Enter');
+  await checkCamera();
+  await page.locator('.bpmn-node[aria-label^="endEvent:"]').first().press('Enter');
+  await expect(page.locator('.bpmn-flow')).toHaveCount(oldFlowCount + 1);
+  await checkCamera();
+  await page.keyboard.press('Control+z');
   await page.getByRole('button', { name: 'Prikaži cijeli model', exact: true }).hover();
   await expect(page.getByRole('tooltip')).toContainText('Prikaži cijeli model');
   await page.getByRole('button', { name: 'Ispunjavanje prijavnice User Task', exact: true }).click();

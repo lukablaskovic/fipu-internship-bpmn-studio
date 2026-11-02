@@ -2,8 +2,8 @@
 import {
   mdiDownload, mdiUpload, mdiUndo, mdiRedo, mdiCheck, mdiPlus, mdiMinus, mdiContentSaveOutline,
   mdiFitToScreenOutline, mdiClose, mdiVectorLine, mdiDeleteOutline, mdiMagnify,
-  mdiMenu, mdiInformationOutline, mdiSitemapOutline, mdiAccountOutline,
-  mdiCogOutline, mdiEmail, mdiHandBackLeftOutline, mdiChevronDown,
+  mdiMenu, mdiInformationOutline, mdiSitemapOutline,
+  mdiChevronDown,
 } from '@mdi/js';
 
 defineProps({ name: { type: String, required: true }, size: { type: Number, default: 18 } });
@@ -12,8 +12,6 @@ const paths = {
   check: mdiCheck, plus: mdiPlus, minus: mdiMinus, fit: mdiFitToScreenOutline,
   close: mdiClose, link: mdiVectorLine, trash: mdiDeleteOutline, search: mdiMagnify,
   menu: mdiMenu, info: mdiInformationOutline, workflow: mdiSitemapOutline,
-  user: mdiAccountOutline, service: mdiCogOutline, send: mdiEmail,
-  manual: mdiHandBackLeftOutline, parallel: mdiPlus, exclusive: mdiClose,
 };
 </script>
 

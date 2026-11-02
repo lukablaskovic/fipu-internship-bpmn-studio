@@ -6,6 +6,8 @@ button { display: inline-flex; align-items: center; justify-content: center; gap
 button:hover:not(:disabled) { border-color: #9eb6c8; background: #f0f6fa; }
 button:disabled { cursor: default; opacity: .42; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #79d4f2; outline-offset: 2px; }
+button.deploy { background: #167342; color: white; border-color: #167342; font-weight: 600; }
+button.deploy:hover:not(:disabled) { background: #105e35; }
 button.primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
 button.primary:hover:not(:disabled) { background: #08698e; border-color: #08698e; }
 button.pressed { background: #dff3fa; border-color: var(--accent); color: #075d80; }
@@ -49,10 +51,11 @@ code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .palette button:hover > svg { opacity: 1; }
 .palette-symbol { position: relative; display: flex; align-items: center; justify-content: center; width: 30px; height: 25px; flex-shrink: 0; border: 1.3px solid #526d84; border-radius: 5px; color: #36556e; }
 .palette-symbol svg { width: 16px; height: 16px; fill: currentColor; }
-.palette-symbol.start, .palette-symbol.end { border-radius: 50%; width: 21px; height: 21px; margin: 0 3px; }
-.palette-symbol.end { border-width: 2.8px; }
-.palette-symbol.parallel, .palette-symbol.exclusive { width: 19px; height: 19px; margin: 1px 4px; border-radius: 1px; transform: rotate(45deg); }
-.palette-symbol.parallel svg, .palette-symbol.exclusive svg { transform: rotate(-45deg); width: 14px; height: 14px; }
+.palette-symbol:is(.startEvent, .endEvent, .intermediateCatchEvent, .intermediateThrowEvent, .timerCatch, .terminateEnd) { border-radius: 50%; width: 21px; height: 21px; margin: 0 3px; }
+.palette-symbol:is(.intermediateCatchEvent, .intermediateThrowEvent, .timerCatch) { border: 3px double #526d84; }
+.palette-symbol:is(.endEvent, .terminateEnd) { border-width: 2.8px; }
+.palette-symbol.parallelGateway, .palette-symbol.exclusiveGateway { width: 19px; height: 19px; margin: 1px 4px; border-radius: 1px; transform: rotate(45deg); }
+.palette-symbol.parallelGateway svg, .palette-symbol.exclusiveGateway svg { transform: rotate(-45deg); width: 14px; height: 14px; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 18px 17px 12px; }
 .list-heading span { font-size: 12px; color: #62798b; font-variant-numeric: tabular-nums; }
 .search-field { position: relative; display: flex; align-items: center; margin: 0 12px 9px; }
@@ -62,11 +65,7 @@ code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .element-list button { width: 100%; text-align: left; align-items: flex-start; justify-content: flex-start; border: 0; border-radius: 5px; padding: 9px 8px; white-space: normal; font-size: 13px; line-height: 1.4; }
 .element-list button.active { background: #e9f5fa; color: #075d80; }
 .element-list small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.node-dot { width: 7px; height: 7px; border: 1px solid #8ba0b2; margin: 4px 3px 0 0; flex-shrink: 0; border-radius: 2px; }
-.node-dot.userTask { background: #b6dfef; border-color: #50a6c6; }
-.node-dot.sendTask { background: #f3e5c5; border-color: #cbb075; }
-.node-dot.serviceTask { background: #d2e4db; border-color: #87aa99; }
-.node-dot.startEvent, .node-dot.endEvent { border-radius: 50%; }
+.element-list .palette-symbol { margin-top: 3px; }
 
 .canvas-panel { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background-color: #f4f7fa; background-image: radial-gradient(#cbd8e3 .65px, transparent .65px); background-size: 16px 16px; overflow: hidden; }
 .canvas-toolbar { min-height: 51px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 7px 14px; border-bottom: 1px solid var(--line); background: #fbfcfd; gap: 6px; }

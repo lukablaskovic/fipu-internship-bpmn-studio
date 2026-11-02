@@ -1,6 +1,8 @@
 # Praksa BPMN execution profile, version 1
 
-Standard BPMN elements retain the OMG namespace `http://www.omg.org/spec/BPMN/20100524/MODEL`. Layout uses BPMNDI, DC and DI namespaces. The profile supports one executable Process, one Pool, Lanes, Start Event, Intermediate Message Catch Event, End Event (normal or terminate), Task, Manual Task, User Task, Service Task, Send Task, Exclusive Gateway, Parallel Gateway, and Sequence Flow. It is a subset of BPMN 2.0.2, not a separate diagram language.
+Standard BPMN elements retain the OMG namespace `http://www.omg.org/spec/BPMN/20100524/MODEL`. Layout uses BPMNDI, DC and DI namespaces. The profile supports one executable Process, one Pool, Lanes, Start Event, Intermediate Message Catch, Timer Catch and None Throw Events, End Event (normal or terminate), Task, Manual Task, User Task, Service Task, Send Task, Exclusive Gateway, Parallel Gateway, and Sequence Flow. It is a subset of BPMN 2.0.2, not a separate diagram language.
+
+Collaboration Message Flows are diagram annotations. Studio can reshape their dashed arrows, but they do not route execution or deliver messages.
 
 Execution extensions live under `bpmn:extensionElements` in `urn:fipu:bpmn:1`. XML namespace URIs determine their meaning; the prefix need not be `fipu`. Existing extension names and values are retained so migration does not change the wire contract:
 
@@ -45,3 +47,5 @@ Models A and B lead from Start to an explicit Parallel Gateway (AND split), whic
 A `bpmn:terminateEventDefinition` clears every remaining token. An optional `fipu:outcome="cancelled"` on a terminate end event records withdrawal; its default outcome is `finished`. Normal successful internship completion also terminates the unused message-waiting branch. Other normal end events still complete only their own branch.
 
 After an engine restart, unfinished historical checkpoints acquire message subscriptions reachable from Start through initial parallel splits. Completed instances remain completed and readable. Already-running in-memory graphs require an engine restart to acquire the new branch. Saving models in Studio alone does not restart or deploy the engine.
+
+Intermediate message catches wait for the existing authenticated instance/event-ID endpoint (empty JSON). Timer catches wait for a literal positive duration in seconds, minutes, hours or days, e.g. PT30S, PT15M, PT2H or P1D (one unit, up to seven digits). Restart restores the deadline from the checkpoint that activated the timer. A none throw marks a step in execution history and immediately continues.

@@ -9,7 +9,7 @@ const origin = process.env.STUDIO_URL || 'http://127.0.0.1:5174';
 const review = new URL('../.impeccable/review/', import.meta.url);
 await mkdir(review, { recursive: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
-await mockModelSource(context);
+const published = await mockModelSource(context);
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
@@ -68,6 +68,11 @@ try {
   await page.reload();
   await selectTask('Spremljeno tipkovnicom');
   assert.equal(nativeWarnings, 0, 'Saved reload must not warn');
+
+  assert(!published.A.includes('Spremljeno tipkovnicom'));
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Deploy', exact: true })).toBeDisabled();
+  assert(published.A.includes('Spremljeno tipkovnicom'));
 
   await name.fill('Oporavljena nespremljena izmjena');
   await page.getByRole('button', { name: 'Primijeni izmjene', exact: true }).click();
@@ -159,8 +164,7 @@ try {
   await blockedPage.goto(origin);
   await blockedPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
   await blockedPage.getByLabel('Naziv', { exact: true }).fill('Zadrži pri grešci spremanja');
-  await blockedPage.getByRole('tab', { name: 'Model B Izravna prijava', exact: true }).click();
-  await blockedPage.getByRole('button', { name: 'Spremi i nastavi', exact: true }).click();
+  await blockedPage.getByRole('button', { name: 'Deploy', exact: true }).click();
   await expect(blockedPage.getByRole('tab', { name: 'Model A Dodjela zadatka' })).toHaveAttribute('aria-selected', 'true');
   await expect(blockedPage.getByLabel('Naziv', { exact: true })).toHaveValue('Zadrži pri grešci spremanja');
   await expect(blockedPage.getByRole('button', { name: 'Spremi', exact: true })).toBeEnabled();
@@ -185,7 +189,7 @@ try {
   await conflictPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
   await conflictPage.getByLabel('Naziv', { exact: true }).fill('Browser draft');
   sources.A = sources.A.replace('name="Spremanje preferencija u baserow"', 'name="Agent edit"');
-  await conflictPage.getByRole('button', { name: 'Spremi', exact: true }).click();
+  await conflictPage.getByRole('button', { name: 'Deploy', exact: true }).click();
   await expect(conflictPage.getByRole('alert')).toContainText('izmijenjen izvan Studija');
   await expect(conflictPage.getByLabel('Naziv', { exact: true })).toHaveValue('Browser draft');
   assert(sources.A.includes('Agent edit') && !sources.A.includes('Browser draft'));
