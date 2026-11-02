@@ -10,15 +10,28 @@ const catalog = JSON.parse(readFileSync(new URL('./public/connectors.json', impo
 const files = new Set(['strucna_praksa_A.bpmn', 'strucna_praksa_B.bpmn']);
 
 // Local authoring only: no public write API is added to the workflow engine.
-export function modelApi(directory) {
+export function modelApi(directory, publicOrigin) {
   return async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost');
     if (!url.pathname.startsWith('/api/models/')) return next();
     const reply = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
     try {
       const origin = new URL(`http://${req.headers.host}`);
-      if (!['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname) || (req.headers.origin && req.headers.origin !== origin.origin)) return reply(403, { error: 'Model authoring is available only on the local Studio origin.' });
+      if (publicOrigin ? (req.method !== 'GET' && req.headers.origin !== publicOrigin) : !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname) || (req.headers.origin && req.headers.origin !== origin.origin)) return reply(403, { error: 'Model authoring is available only on the local Studio origin.' });
       const file = decodeURIComponent(url.pathname.slice('/api/models/'.length));
+      const historical = /^(strucna_praksa_[AB]\.bpmn)\/(history|[1-9]\d*)$/.exec(file);
+      if (historical) {
+        if (req.method !== 'GET') return reply(405, { error: 'Archived versions are read-only.' });
+        try {
+          const store = createModelStore(directory);
+          if (historical[2] === 'history') return reply(200, { versions: store.listVersions(historical[1]) });
+          const { xml } = store.readVersion(historical[1], historical[2]);
+          return reply(200, { xml });
+        } catch (error) {
+          if (error.code === 'ENOENT') return reply(404, { error: 'Version unavailable.' });
+          throw error;
+        }
+      }
       if (!files.has(file)) return reply(404, { error: 'Unknown model.' });
       const store = createModelStore(directory);
       if (req.method === 'GET') {

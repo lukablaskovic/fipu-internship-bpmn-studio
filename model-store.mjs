@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseModel, serializeModel } from './packages/bpmn/model.js';
@@ -39,6 +39,26 @@ export function createModelStore(root) {
     } finally { closeSync(fd); }
   }
 
+  const archive = join(directory, 'history');
+  function historyDirectory() {
+    if (!lstatSync(archive).isDirectory()) throw new Error('Invalid history directory.');
+    return archive;
+  }
+
+  function listVersions(file) {
+    const current = processVersion(parseModel(readFile(file).xml));
+    let entries;
+    try { entries = readdirSync(historyDirectory(), { withFileTypes: true }); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    const versions = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.startsWith(file + '.')) continue;
+      const match = /^([1-9]\d*)\.xml$/.exec(entry.name.slice(file.length + 1));
+      if (match && Number(match[1]) < current) versions.push(Number(match[1]));
+    }
+    return versions.sort((a, b) => b - a);
+  }
+
   function save(file, expectedRevision, xml) {
     const lock = join(directory, `.${file}.mcp.lock`);
     let lockFd;
@@ -51,6 +71,17 @@ export function createModelStore(root) {
     try {
       const current = readFile(file);
       if (current.revision !== expectedRevision) throw new Error('Model changed since it was read. Read it again and review a new preview.');
+      if (xml !== current.xml && /^strucna_praksa_[AB]\.bpmn$/.test(file)) {
+        const version = processVersion(parseModel(current.xml));
+        mkdirSync(archive, { recursive: true });
+        const snapshot = join(historyDirectory(), file + '.' + version + '.xml');
+        if (existsSync(snapshot)) {
+          if (createModelStore(archive).readFile(file + '.' + version + '.xml').revision !== current.revision) throw new Error('Archived version differs from the current definition.');
+        } else {
+          writeFileSync(temporary, current.xml, { flag: 'wx', mode: current.mode });
+          renameSync(temporary, snapshot);
+        }
+      }
       writeFileSync(temporary, xml, { flag: 'wx', mode: current.mode });
       if (readFile(file).revision !== expectedRevision) throw new Error('Model changed during save; no changes were written.');
       renameSync(temporary, current.path);
@@ -61,5 +92,5 @@ export function createModelStore(root) {
     }
   }
 
-  return { readFile, save };
+  return { readFile, save, listVersions, readVersion: (file, version) => createModelStore(historyDirectory()).readFile(file + '.' + version + '.xml') };
 }
