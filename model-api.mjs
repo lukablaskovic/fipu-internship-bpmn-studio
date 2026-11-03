@@ -17,7 +17,10 @@ export function modelApi(directory, publicOrigin) {
     const reply = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
     try {
       const origin = new URL(`http://${req.headers.host}`);
-      if (publicOrigin ? (req.method !== 'GET' && req.headers.origin !== publicOrigin) : !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname) || (req.headers.origin && req.headers.origin !== origin.origin)) return reply(403, { error: 'Model authoring is available only on the local Studio origin.' });
+      const dashboardRead = !publicOrigin && req.method === 'GET' && files.has(url.pathname.slice('/api/models/'.length))
+        && req.headers.origin === 'http://localhost:5173';
+      if (publicOrigin ? (req.method !== 'GET' && req.headers.origin !== publicOrigin) : !['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname) || (req.headers.origin && req.headers.origin !== origin.origin && !dashboardRead)) return reply(403, { error: 'Model authoring is available only on the local Studio origin.' });
+      if (dashboardRead) res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
       const file = decodeURIComponent(url.pathname.slice('/api/models/'.length));
       const historical = /^(strucna_praksa_[AB]\.bpmn)\/(history|[1-9]\d*)$/.exec(file);
       if (historical) {

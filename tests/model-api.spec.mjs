@@ -21,6 +21,11 @@ test('Studio and MCP share two files, validation, revision guards and atomic wri
   const url = `${origin}/api/models/${file}`;
   const put = (xml, expectedRevision, extra = {}) => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Praksa-Editor': '1', ...extra }, body: JSON.stringify({ xml, expectedRevision }) });
   try {
+    const dashboard = { Origin: 'http://localhost:5173' };
+    const preview = await fetch(url, { headers: dashboard });
+    assert.equal(preview.headers.get('access-control-allow-origin'), dashboard.Origin);
+    assert.equal((await preview.json()).xml, xml);
+    assert.equal((await put(xml, '', dashboard)).status, 403);
     const initial = await (await fetch(url)).json();
     const list = async (historyUrl = url + '/history') => (await (await fetch(historyUrl)).json()).versions;
     assert.deepEqual(await list(), []);
