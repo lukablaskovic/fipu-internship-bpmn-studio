@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 export const modelsDirectory = process.env.BPMN_MODELS_DIR || fileURLToPath(new URL('../../fipu-internship-bpmn-engine/models', import.meta.url));
-export const modelXml = name => readFile(resolve(modelsDirectory, `strucna_praksa_${name}.bpmn`), 'utf8');
+// Keep UI fixtures stable when the author edits display labels in the source models.
+export const modelXml = async name => (await readFile(resolve(modelsDirectory, `strucna_praksa_${name}.bpmn`), 'utf8')).replace(/(<bpmn:serviceTask id="spremanje_preferencije"[^>]*name=")[^"]*"/, '$1Spremanje preferencija u baserow"');
 
 // UI regressions must never save edits into the real model files.
 export async function mockModelSource(context) {

@@ -24,7 +24,9 @@ try {
       const certificateGateway = model.nodes.find(node => node.id === 'Gateway_1b8kjb9');
       if (certificateGateway) {
         const flow = model.flows.find(f => f.sourceRef === certificateGateway.id && f.targetRef === 'slanje_potvrde_student_email');
-        const recreated = addFlow(removeElement(model, flow.id), certificateGateway.id, flow.targetRef);
+        // Keep this routing case independent of the saved model's layout.
+        const positioned = moveElement(model, flow.targetRef, certificateGateway.x + 200, certificateGateway.y - 200);
+        const recreated = addFlow(removeElement(positioned, flow.id), certificateGateway.id, flow.targetRef);
         const [tip, bend, end] = recreated.flows.at(-1).waypoints;
         check(tip.x === certificateGateway.x + certificateGateway.width / 2 && tip.y === certificateGateway.y && bend.x === tip.x && bend.y === end.y, 'Certificate branch leaves the top tip and reaches the email task horizontally');
       }
@@ -68,7 +70,7 @@ try {
       for (const invalid of [
         timerXml.replaceAll('bpmn:timerEventDefinition', 'foreign:timerEventDefinition').replace('<foreign:timerEventDefinition', '<foreign:timerEventDefinition xmlns:foreign="urn:foreign"'),
         timerXml.replace('PT20S', '<bpmn:timeDuration>PT20S</bpmn:timeDuration>'),
-        exported.replace('<bpmn:messageEventDefinition', '<bpmn:messageEventDefinition messageRef="ignored"'),
+        serializeModel(updateElement(asTimer, catchId, { variant: 'intermediateCatchEvent' })).replace(/<(\w+:)?messageEventDefinition/, '<$1messageEventDefinition messageRef="ignored"'),
         timerXml.replace('PT20S', 'PT0S'),
       ]) check(validateModel(parseModel(invalid)).some(issue => issue.severity === 'error'), 'Reject malformed or unsupported imported event definitions');
       const errors = validateModel(model, catalog.connectors).filter(issue => issue.severity === 'error');
@@ -166,10 +168,22 @@ try {
         });
         check(validateModel(corrupted, catalog).some(issue => issue.message.includes(`reciprocal ${direction}`)), `Missing ${direction} engine reference rejected`);
       }
-      const parallel = model.nodes.find(node => node.type === 'parallelGateway');
-      const downstream = model.flows.find(flow => flow.sourceRef === parallel.id).targetRef;
-      const parallelCycle = addFlow(model, downstream, parallel.id);
-      check(validateModel(parallelCycle, catalog).some(issue => issue.message.includes('Cycles through Parallel Gateways')), 'Unsupported parallel gateway token cycle rejected');
+      if (name === 'A') {
+        let parallelCycle = model;
+        for (const node of model.nodes.filter(node => ['parallelGateway_1', 'parallelGateway_2'].includes(node.id))) parallelCycle = removeElement(parallelCycle, node.id);
+        for (const flow of parallelCycle.flows.filter(flow => ['uzimanje_podataka_o_poslodavcu_student', 'obavjestavanje_studenta_nakon_alokacije', 'obavjestavanje_poslodavca_nakon_alokacije'].includes(flow.sourceRef))) parallelCycle = removeElement(parallelCycle, flow.id);
+        parallelCycle = addNode(parallelCycle, 'parallelGateway', { id: 'test_notification_split', x: 600, y: 600 });
+        parallelCycle = addNode(parallelCycle, 'parallelGateway', { id: 'test_notification_join', x: 900, y: 600 });
+        for (const [source, target] of [
+          ['uzimanje_podataka_o_poslodavcu_student', 'test_notification_split'],
+          ['test_notification_split', 'obavjestavanje_studenta_nakon_alokacije'],
+          ['test_notification_split', 'obavjestavanje_poslodavca_nakon_alokacije'],
+          ['obavjestavanje_studenta_nakon_alokacije', 'test_notification_join'],
+          ['obavjestavanje_poslodavca_nakon_alokacije', 'test_notification_join'],
+          ['test_notification_join', 'razgovor_za_praksu_poslodavac'],
+        ]) parallelCycle = addFlow(parallelCycle, source, target);
+        check(!validateModel(parseModel(serializeModel(parallelCycle)), catalog).some(issue => issue.severity === 'error'), 'Parallel notifications within the Model A rejection loop pass validation');
+      }
       for (const extensionName of ['connector', 'inputOutput', 'formData', 'connectorId']) {
         const corrupted = mutateXml(document => {
           const extension = document.getElementsByTagNameNS(NS.fipu, extensionName)[0];

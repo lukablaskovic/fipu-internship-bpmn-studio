@@ -32,7 +32,7 @@ User Task `formData` contains `formField` elements with `id`, `type` and optiona
 
 Sequence Flow conditions retain the engine's `variable:value` string-equality syntax. This is not FEEL or a full expression evaluator. Branches from an Exclusive Gateway should be mutually exclusive. Existing process IDs, task IDs, field IDs and flow IDs must be preserved during migration.
 
-Exclusive Gateways select the first matching outgoing flow and use the default only if none matches. Normal End Events consume their own token; other branches continue. Cycles that revisit a Parallel Gateway are rejected by Studio because the current engine does not reset join tokens for another iteration. The existing Model A rejection loop remains supported because it precedes its parallel gateways.
+Exclusive Gateways select the first matching outgoing flow and use the default only if none matches. Normal End Events consume their own token; other branches continue. Parallel Gateways consume one token from each incoming Sequence Flow before activating their outgoing flows. Splits and joins can repeat within a loop; each iteration waits for all incoming branches again. Restart rebuilds partially arrived joins from the pinned definition and recorded transitions without repeating connector effects. Coordinator rollback starts fresh gateway counters for the reopened path.
 
 The engine and Studio accept only the FIPU execution profile. Optional legacy DI color annotations are retained as inert XML metadata; they are not a runtime dependency. Unknown XML metadata is preserved, while unsupported executable elements prevent validated export.
 

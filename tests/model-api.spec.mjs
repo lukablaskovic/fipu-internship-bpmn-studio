@@ -26,7 +26,8 @@ test('Studio and MCP share two files, validation, revision guards and atomic wri
     assert.deepEqual(await list(), []);
     assert.equal(initial.xml, xml);
     assert.equal(initial.version >= 1, true);
-    const changed = xml.replace('name="Spremanje preferencija u baserow"', 'name="Provjera zajedničkog izvora"');
+    const changed = xml.replace(/(<bpmn:serviceTask id="spremanje_preferencije"[^>]*name=")[^"]*"/, '$1Provjera zajedničkog izvora"');
+    assert.notEqual(changed, xml);
     const response = await put(changed, initial.revision);
     assert.equal(response.status, 200);
     const stored = await (await fetch(url)).json();
