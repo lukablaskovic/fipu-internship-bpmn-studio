@@ -98,8 +98,11 @@ try {
       if (name === 'B') {
         check(validateModel(model, catalog.connectors).length === 0, 'Model B has no validation warnings');
         check(!model.nodes.some(node => node.id === 'Activity_0dri58t'), 'Unused Model B placeholder removed');
-        const branchEnd = model.nodes.find(node => node.id === 'end_event_dogovor_poslodavac');
-        check(branchEnd?.type === 'endEvent' && model.flows.some(flow => flow.sourceRef === 'model_b_dogovor_poslodavac' && flow.targetRef === branchEnd.id), 'Employer branch has a normal End Event');
+        const join = model.flows.find(flow => flow.targetRef === 'model_b_odobrenje_zadatka')?.sourceRef;
+        check(model.nodes.some(node => node.id === join && node.type === 'parallelGateway'), 'Approval follows a parallel join');
+        for (const task of ['model_b_dogovor_profesor', 'model_b_dogovor_poslodavac']) {
+          check(model.flows.some(flow => flow.sourceRef === task && flow.targetRef === join), 'Both agreement branches join before approval');
+        }
       }
       const mutateXml = callback => {
         const draft = parseModel(exported);
