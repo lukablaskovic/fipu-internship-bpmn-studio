@@ -64,7 +64,9 @@ try {
   await expect(name).toHaveValue('Spremljeno tipkovnicom');
   await name.press('Control+s');
   await expect(save).toBeDisabled();
-  assert((await draft()).savedXml.includes('Spremljeno tipkovnicom'));
+  assert.equal((await draft()).savedXml, null);
+  assert.equal((await draft()).exportedXml, undefined);
+  assert((await draft()).xml.includes('Spremljeno tipkovnicom'));
   await page.reload();
   await selectTask('Spremljeno tipkovnicom');
   assert.equal(nativeWarnings, 0, 'Saved reload must not warn');
@@ -134,7 +136,7 @@ try {
   await expect(page.getByRole('dialog', { name: 'Svojstva elementa', exact: true })).toBeVisible();
   await name.fill('Mobilno spremljeno');
   await name.press('Meta+s');
-  await expect.poll(async () => (await draft()).savedXml).toContain('Mobilno spremljeno');
+  await expect.poll(async () => (await draft()).xml).toContain('Mobilno spremljeno');
   await name.fill('Nespremljeno na mobitelu');
   await name.press('Control+Shift+r');
   await expect(dialog).toBeVisible();
@@ -142,7 +144,7 @@ try {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await Promise.all([page.waitForEvent('domcontentloaded'), dialog.getByRole('button', { name: 'Spremi i nastavi' }).click()]);
   await expect(save).toBeDisabled();
-  assert((await draft()).savedXml.includes('Nespremljeno na mobitelu'));
+  assert((await draft()).xml.includes('Nespremljeno na mobitelu'));
   assert.equal(nativeWarnings, 1);
 
   await page.setViewportSize({ width: 1440, height: 960 });

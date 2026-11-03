@@ -37,7 +37,6 @@ const connectFrom = ref('');
 const catalog = ref([]);
 const history = ref([]);
 const future = ref([]);
-const exportedXml = ref('');
 const savedXml = ref('');
 const deployedXml = ref('');
 const processVersion = ref(null);
@@ -73,7 +72,7 @@ function readDraft(key) {
 }
 function persist(saved = savedXml.value) {
   try {
-    const draft = { xml: currentXml.value, name: importedName.value, exportedXml: exportedXml.value, savedXml: saved, unpublished: unpublished.value, baseRevision: sourceRevision.value };
+    const draft = { xml: currentXml.value, name: importedName.value, savedXml: saved === currentXml.value ? null : saved, unpublished: unpublished.value, baseRevision: sourceRevision.value };
     localStorage.setItem('fipu-bpmn-studio:active', activeModel.value);
     localStorage.setItem(storageKey(), JSON.stringify(draft));
     if (activeModel.value === 'import') importedDraft.value = draft;
@@ -260,17 +259,17 @@ async function loadModel(key, requestedVersion) {
     }
     const original = parseModel(xml);
     activeModel.value = key; importedName.value = '';
-    exportedXml.value = serializeModel(original);
     sourceRevision.value = revision;
     processVersion.value = savedVersion;
     updateModelLink();
-    deployedXml.value = exportedXml.value;
-    savedXml.value = exportedXml.value;
+    deployedXml.value = serializeModel(original);
+    savedXml.value = deployedXml.value;
     let draft;
     try { draft = JSON.parse(readDraft(storageKey()) || 'null'); }
     catch { notice.value = 'Spremljena skica nije čitljiva. Otvoren je izvorni model.'; }
-    let restore = draft?.xml && (draft.baseRevision === revision || (!draft.baseRevision && draft.exportedXml === exportedXml.value));
-    if (draft?.xml && !restore && draft.xml !== exportedXml.value && (draft.unpublished || !draft.baseRevision || draft.xml !== draft.savedXml)) {
+    if (draft?.savedXml === null) draft.savedXml = draft.xml;
+    let restore = draft?.xml && (draft.baseRevision === revision || (!draft.baseRevision && draft.exportedXml === deployedXml.value));
+    if (draft?.xml && !restore && draft.xml !== deployedXml.value && (draft.unpublished || !draft.baseRevision || draft.xml !== draft.savedXml)) {
       restore = await ask('Izvorni model je promijenjen. Otvoriti prethodnu lokalnu skicu za pregled i izvoz? Odustani otvara aktualni izvorni model.', 'Otvori lokalnu skicu');
       if (version !== loadVersion) return;
       if (restore) sourceRevision.value = draft.baseRevision || '';
@@ -294,7 +293,7 @@ async function restoreImport() {
     const parsed = parseModel(draft.xml);
     const saved = draft.savedXml ? serializeModel(parseModel(draft.savedXml)) : serializeModel(parsed);
     ++loadVersion; sourceRevision.value = ''; activeModel.value = 'import'; updateModelLink(); importedName.value = draft.name || 'model.bpmn';
-    model.value = parsed; exportedXml.value = draft.exportedXml || draft.xml;
+    model.value = parsed;
     savedXml.value = saved;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = '';
     loading.value = false; error.value = ''; showIssues.value = false; persist();
@@ -311,7 +310,7 @@ async function importFile(event) {
     const imported = parseModel(await file.text());
     ++loadVersion;
     activeModel.value = 'import'; updateModelLink(); sourceRevision.value = ''; importedName.value = file.name;
-    model.value = imported; exportedXml.value = currentXml.value; savedXml.value = currentXml.value;
+    model.value = imported; savedXml.value = currentXml.value;
     selectedId.value = ''; history.value = []; future.value = []; connecting.value = false; connectFrom.value = ''; showIssues.value = true;
     loading.value = false; error.value = ''; notice.value = `Otvoreno: ${file.name}`;
     persist(); requestAnimationFrame(() => diagram.value?.fit());
@@ -326,7 +325,7 @@ function download() {
   const a = document.createElement('a');
   a.href = url; a.download = activeModel.value === 'import' ? (importedName.value.replace(/\.(xml|bpmn)$/i, '') + '.bpmn') : `strucna_praksa_${activeModel.value}.bpmn`;
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  exportedXml.value = currentXml.value; persist(); error.value = ''; notice.value = 'BPMN datoteka je izvezena.';
+  error.value = ''; notice.value = 'BPMN datoteka je izvezena.';
 }
 async function undo() {
   if (!history.value.length || !(await leaveInspector())) return;
