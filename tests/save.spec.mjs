@@ -39,6 +39,23 @@ try {
   await linked.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
   await linked.mouse.up();
   await expect(canvas).toHaveAttribute('viewBox', fitted);
+  const touch = await context.newCDPSession(linked);
+  const midX = frame.x + frame.width / 2, midY = frame.y + frame.height / 2;
+  const dispatch = (type, offsets) => touch.send('Input.dispatchTouchEvent', {
+    type, touchPoints: offsets.map((dx, id) => ({ x: midX + dx, y: midY, id })),
+  });
+  await dispatch('touchStart', [-25, 25]);
+  await dispatch('touchMove', [-100, 100]);
+  await dispatch('touchEnd', []);
+  const readView = async () => (await canvas.getAttribute('viewBox')).split(' ').map(Number);
+  const pinched = await readView();
+  assert(pinched[2] < Number(fitted.split(' ')[2]) / 2, 'Spreading two fingers zooms into the model');
+  await dispatch('touchStart', [0]);
+  await dispatch('touchMove', [50]);
+  await dispatch('touchEnd', []);
+  const panned = await readView();
+  assert(panned[0] < pinched[0], 'The diagram follows a single finger');
+  assert.equal(panned[2], pinched[2], 'Panning preserves the zoom level');
   await linked.route('**/api/models/strucna_praksa_B.bpmn/1', route => route.fulfill({ status: 404, json: { error: 'Version unavailable.' } }));
   await linked.goto(origin + '/admin/model/strucna_praksa_B/1');
   await expect(linked.getByRole('alert')).toContainText('Trenutno je objavljena verzija v2');
