@@ -67,6 +67,18 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Provjeri model' })).toBeFocused();
   const canvas = page.locator('.fipu-bpmn-canvas');
+  const viewportWidth = () => canvas.evaluate(svg => svg.viewBox.baseVal.width);
+  const wheelZoom = async deltaY => {
+    await canvas.dispatchEvent('wheel', { deltaY, ctrlKey: true, clientX: 600, clientY: 400 });
+    return viewportWidth();
+  };
+  const initialWidth = await viewportWidth();
+  const smallZoom = await wheelZoom(-1);
+  assert(smallZoom < initialWidth * 0.995 && smallZoom > initialWidth * 0.99, 'Small trackpad movements zoom responsively without jumping');
+  assert(Math.abs(await wheelZoom(1) - initialWidth) < 0.001, 'Opposite gestures restore the zoom');
+  const largeZoom = await wheelZoom(-1000);
+  assert(largeZoom < smallZoom && largeZoom > initialWidth * 0.9, 'Large wheel deltas remain bounded');
+  await page.getByRole('button', { name: 'Prikaži cijeli model', exact: true }).click();
   const camera = () => canvas.evaluate(async svg => {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const box = svg.viewBox.baseVal;
