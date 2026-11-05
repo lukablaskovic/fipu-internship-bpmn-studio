@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4174",
     "mcp": "node mcp/server.mjs",
     "test:mcp": "node --test tests/mcp.spec.mjs",
-    "test:source": "node --test tests/model-api.spec.mjs",
+    "test:source": "node --test tests/model-api.spec.mjs tests/studio-access.spec.mjs",
     "test:model": "node tests/model.spec.mjs",
     "test:ui": "node tests/connect.spec.mjs && node tests/studio.spec.mjs && node tests/reka.spec.mjs && node tests/save.spec.mjs",
     "test": "npm run test:model && npm run test:mcp && npm run test:source && npm run test:ui"

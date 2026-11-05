@@ -1,16 +1,16 @@
 import express from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { modelApi } from './model-api.mjs';
+import { isStudioEditor } from './studio-access.mjs';
 
 const app = express();
 const origin = 'https://fipu-praksa.unipu.hr';
 const audience = '182844940133-k5k1t08dposga8083n6nek2r4gjo9a7l.apps.googleusercontent.com';
 const keys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-const email = 'lblaskovi@unipu.hr';
 const cookie = '__Secure-praksa_studio';
 async function verify(token) {
   const { payload } = await jwtVerify(token, keys, { algorithms: ['RS256'], issuer: ['https://accounts.google.com', 'accounts.google.com'], audience, requiredClaims: ['exp', 'sub'] });
-  return payload.email_verified === true && payload.email === email && payload.hd === 'unipu.hr';
+  return isStudioEditor(payload);
 }
 app.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
 app.post('/login', express.json({ limit: '8kb' }), async (req, res) => {

@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY packages ./packages
 RUN npm ci
-COPY index.html vite.config.js model-api.mjs model-store.mjs server.mjs ./
+COPY index.html vite.config.js model-api.mjs model-store.mjs server.mjs studio-access.mjs ./
 COPY public ./public
 COPY src ./src
 RUN npm run build -- --base=/studio/ && npm prune --omit=dev
