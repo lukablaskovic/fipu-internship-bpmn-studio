@@ -91,7 +91,9 @@ function saveModel() {
   return true;
 }
 async function deployModel() {
-  if (!unpublished.value || saving.value || loading.value || (inspectorDirty.value && !applyInspector())) return;
+  if (!unpublished.value || saving.value || loading.value) return;
+  if (!await ask(`Objaviti izmjene modela ${activeModel.value} za nove instance? Postojeće instance nastavljaju koristiti svoju verziju modela.`, 'Objavi')) return;
+  if (inspectorDirty.value && !applyInspector()) return;
   resetInspector();
   const xml = currentXml.value;
   saving.value = true;

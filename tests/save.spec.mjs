@@ -12,6 +12,8 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 960 
 const published = await mockModelSource(context);
 const page = await context.newPage();
 const errors = [];
+let publishRequests = 0;
+page.on('request', request => { if (request.method() === 'PUT') publishRequests++; });
 page.on('pageerror', error => errors.push(error.message));
 let nativeWarnings = 0;
 page.on('dialog', async dialog => { assert.equal(dialog.type(), 'beforeunload'); nativeWarnings++; await dialog.accept(); });
@@ -90,7 +92,23 @@ try {
 
   assert(!published.A.includes('Spremljeno tipkovnicom'));
   await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  const deployDialog = page.getByRole('alertdialog');
+  await expect(deployDialog).toContainText('Objaviti izmjene modela A za nove instance?');
+  await expect(deployDialog.getByRole('button', { name: 'Odustani' })).toBeFocused();
+  assert.equal(publishRequests, 0);
+  await deployDialog.getByRole('button', { name: 'Odustani' }).click();
+  await expect(deployDialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Deploy', exact: true })).toBeFocused();
+  assert.equal(publishRequests, 0);
+  assert(!published.A.includes('Spremljeno tipkovnicom'));
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(deployDialog).toHaveCount(0);
+  assert.equal(publishRequests, 0);
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await deployDialog.getByRole('button', { name: 'Objavi', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Deploy', exact: true })).toBeDisabled();
+  assert.equal(publishRequests, 1);
   assert(published.A.includes('Spremljeno tipkovnicom'));
 
   await name.fill('Oporavljena nespremljena izmjena');
@@ -184,6 +202,7 @@ try {
   await blockedPage.getByRole('button', { name: 'Spremanje preferencija u baserow Service Task', exact: true }).click();
   await blockedPage.getByLabel('Naziv', { exact: true }).fill('Zadrži pri grešci spremanja');
   await blockedPage.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await blockedPage.getByRole('alertdialog').getByRole('button', { name: 'Objavi', exact: true }).click();
   await expect(blockedPage.getByRole('tab', { name: 'Model A Dodjela zadatka' })).toHaveAttribute('aria-selected', 'true');
   await expect(blockedPage.getByLabel('Naziv', { exact: true })).toHaveValue('Zadrži pri grešci spremanja');
   await expect(blockedPage.getByRole('button', { name: 'Spremi', exact: true })).toBeEnabled();
@@ -209,6 +228,7 @@ try {
   await conflictPage.getByLabel('Naziv', { exact: true }).fill('Browser draft');
   sources.A = sources.A.replace('name="Spremanje preferencija u baserow"', 'name="Agent edit"');
   await conflictPage.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await conflictPage.getByRole('alertdialog').getByRole('button', { name: 'Objavi', exact: true }).click();
   await expect(conflictPage.getByRole('alert')).toContainText('izmijenjen izvan Studija');
   await expect(conflictPage.getByLabel('Naziv', { exact: true })).toHaveValue('Browser draft');
   assert(sources.A.includes('Agent edit') && !sources.A.includes('Browser draft'));
